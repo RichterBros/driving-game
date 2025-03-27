@@ -111,4 +111,118 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-animate(); 
+animate();
+
+// Create touch controls container
+const touchControls = document.createElement('div');
+touchControls.style.position = 'fixed';
+touchControls.style.bottom = '20px';
+touchControls.style.left = '20px';
+touchControls.style.width = '100%';
+touchControls.style.display = 'none'; // Initially hidden
+
+// Create button style
+const buttonStyle = `
+    width: 60px;
+    height: 60px;
+    background: rgba(255, 255, 255, 0.3);
+    border: 2px solid white;
+    border-radius: 50%;
+    margin: 10px;
+    display: inline-block;
+    color: white;
+    font-size: 24px;
+    line-height: 60px;
+    text-align: center;
+    user-select: none;
+    -webkit-user-select: none;
+`;
+
+// Create movement buttons container
+const moveControls = document.createElement('div');
+moveControls.style.display = 'inline-block';
+moveControls.style.position = 'absolute';
+moveControls.style.left = '20px';
+moveControls.style.bottom = '20px';
+
+// Create buttons
+const buttons = {
+    up: createButton('↑'),
+    down: createButton('↓'),
+    left: createButton('←'),
+    right: createButton('→')
+};
+
+// Add buttons to moveControls
+Object.values(buttons).forEach(button => {
+    moveControls.appendChild(button);
+});
+
+// Create and style shoot button
+const shootButton = createButton('🔫');
+shootButton.style.backgroundColor = 'rgba(255, 0, 0, 0.3)';
+shootButton.style.width = '80px';
+shootButton.style.height = '80px';
+shootButton.style.lineHeight = '80px';
+shootButton.style.fontSize = '32px';
+shootButton.style.position = 'absolute';
+shootButton.style.right = '40px';
+shootButton.style.bottom = '20px';
+
+// Add everything to the page
+document.body.appendChild(touchControls);
+touchControls.appendChild(moveControls);
+touchControls.appendChild(shootButton);
+
+// Show controls only on touch devices
+if ('ontouchstart' in window) {
+    touchControls.style.display = 'block';
+}
+
+// Helper function to create buttons
+function createButton(text) {
+    const button = document.createElement('div');
+    button.style.cssText = buttonStyle;
+    button.innerText = text;
+    return button;
+}
+
+// Touch states for controls
+const touchStates = {
+    ArrowUp: false,
+    ArrowDown: false,
+    ArrowLeft: false,
+    ArrowRight: false,
+    ' ': false  // Space for shooting
+};
+
+// Add touch event listeners
+buttons.up.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    touchStates.ArrowUp = true;
+});
+buttons.up.addEventListener('touchend', () => touchStates.ArrowUp = false);
+
+buttons.down.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    touchStates.ArrowDown = true;
+});
+buttons.down.addEventListener('touchend', () => touchStates.ArrowDown = false);
+
+buttons.left.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    touchStates.ArrowLeft = true;
+});
+buttons.left.addEventListener('touchend', () => touchStates.ArrowLeft = false);
+
+buttons.right.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    touchStates.ArrowRight = true;
+});
+buttons.right.addEventListener('touchend', () => touchStates.ArrowRight = false);
+
+shootButton.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    touchStates[' '] = true;
+});
+shootButton.addEventListener('touchend', () => touchStates[' '] = false); 

@@ -7,7 +7,7 @@ renderer.setClearColor(0x87ceeb); // Set sky blue background color
 document.body.appendChild(renderer.domElement);
 
 // Socket.IO setup - make sure this URL matches your Render backend service
-const socket = io('https://driving-game-server.onrender.com');
+const socket = io('http://localhost:3000');
 
 // Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
@@ -60,7 +60,7 @@ for (let i = 0; i < 12; i++) {
 
 // Update ground size and color
 const groundGeometry = new THREE.PlaneGeometry(100, 100);
-const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x3a7d44 });
+const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x3a7d44 }); // Green color
 const ground = new THREE.Mesh(groundGeometry, groundMaterial);
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.1; // Slightly below zero
@@ -149,16 +149,19 @@ console.log('Game initialized!');
 
 // Update the keyboard event listeners
 window.addEventListener('keydown', (e) => {
-    if (keys.hasOwnProperty(e.key)) {
+    // Handle spacebar separately from other keys
+    if (e.key === ' ') {
+        keys[' '] = true;
+    } else if (keys.hasOwnProperty(e.key)) {
         keys[e.key] = true;
-        if (e.key === ' ') {
-            console.log('Spacebar pressed!');
-        }
     }
 });
 
 window.addEventListener('keyup', (e) => {
-    if (keys.hasOwnProperty(e.key)) {
+    // Handle spacebar separately from other keys
+    if (e.key === ' ') {
+        keys[' '] = false;
+    } else if (keys.hasOwnProperty(e.key)) {
         keys[e.key] = false;
     }
 });
@@ -172,7 +175,10 @@ window.addEventListener('resize', () => {
 
 // Socket.io event handlers
 socket.on('currentPlayers', (serverPlayers) => {
+    // Update player count
     document.getElementById('playerCount').textContent = Object.keys(serverPlayers).length;
+    
+    // Add other players to the scene
     Object.keys(serverPlayers).forEach((id) => {
         if (id !== socket.id) {
             addPlayer(id, serverPlayers[id]);
@@ -208,9 +214,44 @@ socket.on('playerDisconnected', (playerId) => {
 
 // Helper functions
 function addPlayer(id, playerInfo) {
-    const playerCar = new THREE.Mesh(carGeometry, new THREE.MeshStandardMaterial({ color: 0xff0000 }));
+    // Create player car body
+    const carGeometry = new THREE.BoxGeometry(2, 1, 4);
+    const carMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+    const playerCar = new THREE.Mesh(carGeometry, carMaterial);
+    
+    // Create wheels
+    const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
+    const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+
+    // Create wheels and position them relative to the car body
+    const wheelFL = new THREE.Mesh(wheelGeometry, wheelMaterial);
+    const wheelFR = new THREE.Mesh(wheelGeometry, wheelMaterial);
+    const wheelBL = new THREE.Mesh(wheelGeometry, wheelMaterial);
+    const wheelBR = new THREE.Mesh(wheelGeometry, wheelMaterial);
+
+    // Position wheels
+    wheelFL.position.set(-1.2, -0.3, 1.2);
+    wheelFR.position.set(1.2, -0.3, 1.2);
+    wheelBL.position.set(-1.2, -0.3, -1.2);
+    wheelBR.position.set(1.2, -0.3, -1.2);
+
+    // Rotate wheels to correct orientation
+    wheelFL.rotation.z = Math.PI / 2;
+    wheelFR.rotation.z = Math.PI / 2;
+    wheelBL.rotation.z = Math.PI / 2;
+    wheelBR.rotation.z = Math.PI / 2;
+
+    // Add wheels to car
+    playerCar.add(wheelFL);
+    playerCar.add(wheelFR);
+    playerCar.add(wheelBL);
+    playerCar.add(wheelBR);
+
+    // Set car position and rotation
     playerCar.position.copy(playerInfo.position);
     playerCar.rotation.y = playerInfo.rotation.y;
+    
+    // Add to scene and players object
     scene.add(playerCar);
     players[id] = playerCar;
 }
@@ -287,6 +328,28 @@ function checkBuildingCollision(carPosition) {
             // Calculate bounce direction
             const bounceDirection = new THREE.Vector2(dx, dz).normalize();
             return bounceDirection;
+        }
+    }
+    return null;
+}
+
+// Update the player collision check function
+function checkPlayerCollisions(position) {
+    // Check collision with other players
+    for (let id in players) {
+        if (id !== socket.id) { // Don't check collision with self
+            const otherPlayer = players[id];
+            const dx = position.x - otherPlayer.position.x;
+            const dz = position.z - otherPlayer.position.z;
+            const distance = Math.sqrt(dx * dx + dz * dz);
+            
+            // Adjust collision radius to match car dimensions
+            // Car is 2 units wide and 4 units long, so we'll use 3 units as average
+            if (distance < 3) { // Reduced from 6 to 3 for tighter collision
+                // Calculate bounce direction
+                const bounceDirection = new THREE.Vector2(dx, dz).normalize();
+                return bounceDirection;
+            }
         }
     }
     return null;
@@ -462,11 +525,26 @@ function animate() {
         car.position.x -= Math.sin(car.rotation.y) * currentSpeed;
         car.position.z -= Math.cos(car.rotation.y) * currentSpeed;
 
+        // Check player collisions
+        const playerCollision = checkPlayerCollisions(car.position);
+        if (playerCollision) {
+            // Move back to previous position
+            car.position.copy(previousPosition);
+            
+            // Apply bounce
+            const bounceForce = 0.3; // Adjust for bounciness
+            car.position.x += playerCollision.x * bounceForce;
+            car.position.z += playerCollision.y * bounceForce;
+            
+            // Reduce speed on collision
+            currentSpeed *= -0.5; // Bounce back at half speed
+        }
+
         // Apply turning
         if (left) car.rotation.y += rotationSpeed * (Math.abs(currentSpeed) / MAX_SPEED);
         if (right) car.rotation.y -= rotationSpeed * (Math.abs(currentSpeed) / MAX_SPEED);
 
-        // Handle shooting
+        // Handle shooting separately
         if (shooting) {
             console.log('Shooting!');
             createBullet(gunLeft);

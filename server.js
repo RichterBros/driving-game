@@ -131,7 +131,7 @@ io.on('connection', (socket) => {
     });
 });
 
-const PORT = 8080;
+const PORT = 3000;
 http.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });

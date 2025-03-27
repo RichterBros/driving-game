@@ -204,7 +204,13 @@ socket.on('playerDisconnected', (playerId) => {
 
 // Helper functions
 function addPlayer(id, playerInfo) {
-    const playerCar = createCarWithWheels(0xff0000); // Red for other players
+    const playerCarGeometry = new THREE.BoxGeometry(2, 1, 4);
+    const playerCarMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+    const playerCar = new THREE.Mesh(playerCarGeometry, playerCarMaterial);
+    
+    // Add wheels to the remote player's car
+    addWheelsTocar(playerCar);
+    
     playerCar.position.copy(playerInfo.position);
     playerCar.rotation.y = playerInfo.rotation.y;
     scene.add(playerCar);
@@ -668,18 +674,8 @@ socket.on('playerHit', () => {
 // Add this to your index.html <head> section:
 // <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"> 
 
-// Function to create a car with wheels (used for both local and remote players)
-function createCarWithWheels(color) {
-    // Create car group
-    const carGroup = new THREE.Group();
-
-    // Car body
-    const carGeometry = new THREE.BoxGeometry(2, 1, 4);
-    const carMaterial = new THREE.MeshStandardMaterial({ color: color });
-    const carBody = new THREE.Mesh(carGeometry, carMaterial);
-    carBody.position.y = 0.5;
-    carGroup.add(carBody);
-
+// Instead of creating a new car, update your existing car with wheels
+function addWheelsTocar(carMesh) {
     // Wheels
     const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
     const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
@@ -696,17 +692,16 @@ function createCarWithWheels(color) {
         const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
         wheel.position.set(pos[0], pos[1], pos[2]);
         wheel.rotation.z = Math.PI / 2;
-        carGroup.add(wheel);
+        carMesh.add(wheel);
         return wheel;
     });
 
-    carGroup.wheels = wheels;
-    return carGroup;
+    carMesh.wheels = wheels;
+    return carMesh;
 }
 
-// Create local player's car
-const car = createCarWithWheels(0x00ff00); // Green for local player
-scene.add(car);
+// Add wheels to your existing car
+addWheelsTocar(car);
 
 // Update the animate function to rotate all wheels
 function animate() {

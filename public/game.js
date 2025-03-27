@@ -204,47 +204,9 @@ socket.on('playerDisconnected', (playerId) => {
 
 // Helper functions
 function addPlayer(id, playerInfo) {
-    // Create car body
-    const playerCarGeometry = new THREE.BoxGeometry(2, 1, 4);
-    const playerCarMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-    const playerCar = new THREE.Mesh(playerCarGeometry, playerCarMaterial);
-    
-    // Create wheels
-    const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
-    const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
-
-    // Create and position wheels
-    const wheelFL = new THREE.Mesh(wheelGeometry, wheelMaterial);
-    const wheelFR = new THREE.Mesh(wheelGeometry, wheelMaterial);
-    const wheelBL = new THREE.Mesh(wheelGeometry, wheelMaterial);
-    const wheelBR = new THREE.Mesh(wheelGeometry, wheelMaterial);
-
-    // Position wheels
-    wheelFL.position.set(-1.2, -0.3, 1.2);
-    wheelFR.position.set(1.2, -0.3, 1.2);
-    wheelBL.position.set(-1.2, -0.3, -1.2);
-    wheelBR.position.set(1.2, -0.3, -1.2);
-
-    // Rotate wheels to correct orientation
-    wheelFL.rotation.z = Math.PI / 2;
-    wheelFR.rotation.z = Math.PI / 2;
-    wheelBL.rotation.z = Math.PI / 2;
-    wheelBR.rotation.z = Math.PI / 2;
-
-    // Add wheels to car
-    playerCar.add(wheelFL);
-    playerCar.add(wheelFR);
-    playerCar.add(wheelBL);
-    playerCar.add(wheelBR);
-
-    // Set car position and rotation
+    const playerCar = createCarWithWheels(0xff0000); // Red for other players
     playerCar.position.copy(playerInfo.position);
     playerCar.rotation.y = playerInfo.rotation.y;
-    playerCar.position.y = 0.5; // Lift car off ground
-
-    // Store wheels for animation
-    playerCar.wheels = [wheelFL, wheelFR, wheelBL, wheelBR];
-    
     scene.add(playerCar);
     players[id] = playerCar;
 }
@@ -713,3 +675,68 @@ socket.on('playerHit', () => {
 // Add meta viewport tag to your HTML for proper mobile scaling
 // Add this to your index.html <head> section:
 // <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"> 
+
+// Function to create a car with wheels (used for both local and remote players)
+function createCarWithWheels(color) {
+    // Create car group
+    const carGroup = new THREE.Group();
+
+    // Car body
+    const carGeometry = new THREE.BoxGeometry(2, 1, 4);
+    const carMaterial = new THREE.MeshStandardMaterial({ color: color });
+    const carBody = new THREE.Mesh(carGeometry, carMaterial);
+    carBody.position.y = 0.5;
+    carGroup.add(carBody);
+
+    // Wheels
+    const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
+    const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+
+    // Create wheels
+    const wheelPositions = [
+        [-1.2, -0.3, 1.2],  // Front Left
+        [1.2, -0.3, 1.2],   // Front Right
+        [-1.2, -0.3, -1.2], // Back Left
+        [1.2, -0.3, -1.2]   // Back Right
+    ];
+
+    const wheels = wheelPositions.map(pos => {
+        const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+        wheel.position.set(pos[0], pos[1], pos[2]);
+        wheel.rotation.z = Math.PI / 2;
+        carGroup.add(wheel);
+        return wheel;
+    });
+
+    carGroup.wheels = wheels;
+    return carGroup;
+}
+
+// Create local player's car
+const car = createCarWithWheels(0x00ff00); // Green for local player
+scene.add(car);
+
+// Update the animate function to rotate all wheels
+function animate() {
+    requestAnimationFrame(animate);
+
+    if (localPlayer && !isPlayerDead) {
+        // Rotate local player's wheels
+        if (car.wheels) {
+            car.wheels.forEach(wheel => {
+                wheel.rotation.x += currentSpeed * 5;
+            });
+        }
+
+        // Rotate other players' wheels
+        Object.values(players).forEach(playerCar => {
+            if (playerCar.wheels) {
+                playerCar.wheels.forEach(wheel => {
+                    wheel.rotation.x += currentSpeed * 5;
+                });
+            }
+        });
+
+        // ... rest of your animate function ...
+    }
+} 

@@ -485,35 +485,27 @@ function animate() {
             bullet.position.x -= Math.sin(bullet.rotation.y) * BULLET_SPEED;
             bullet.position.z -= Math.cos(bullet.rotation.y) * BULLET_SPEED;
             
-            // Check collision with other players
-            Object.keys(players).forEach(id => {
-                if (id !== socket.id) { // Don't check collision with own bullets
-                    const player = players[id];
-                    const dx = bullet.position.x - player.position.x;
-                    const dz = bullet.position.z - player.position.z;
-                    const distance = Math.sqrt(dx * dx + dz * dz);
-                    
-                    if (distance < 2) { // Hit detection radius
-                        // Remove bullet
-                        scene.remove(bullet);
-                        bullets.splice(i, 1);
-                        
-                        // Update health
-                        playerHealth -= BULLET_DAMAGE;
-                        updateHealthBar();
-                        
-                        // Check for destruction
-                        if (playerHealth <= 0 && !isPlayerDead) {
-                            playerDeath();
-                        }
-                    }
-                }
-            });
+            // Check collision with local player's car
+            const dx = bullet.position.x - car.position.x;
+            const dz = bullet.position.z - car.position.z;
+            const distance = Math.sqrt(dx * dx + dz * dz);
             
-            // Remove old bullets
-            if (bullet.createdAt && Date.now() - bullet.createdAt > BULLET_LIFETIME) {
+            // Only take damage if hit by OTHER players' bullets
+            if (distance < 2 && bullet.ownerId !== socket.id) {
+                console.log('Local player hit! Health: ' + playerHealth);
+                
+                // Remove bullet
                 scene.remove(bullet);
                 bullets.splice(i, 1);
+                
+                // Local player takes damage
+                playerHealth -= BULLET_DAMAGE;
+                updateHealthBar();
+                
+                // Check for death
+                if (playerHealth <= 0 && !isPlayerDead) {
+                    playerDeath();
+                }
             }
         }
 

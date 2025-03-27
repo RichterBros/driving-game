@@ -13,63 +13,85 @@ app.use(express.static('public'));
 
 const players = {};
 
-io.on('connection', (socket) => {
-    console.log('A player connected');
-
-    // Initialize player
-    players[socket.id] = {
-        position: { x: 0, y: 0.5, z: 0 },
-        rotation: { y: 0 }
-    };
-
-    // Send current players to new player
-    socket.emit('currentPlayers', players);
-
-    // Broadcast new player to all other players
-    socket.broadcast.emit('newPlayer', {
-        id: socket.id,
-        position: players[socket.id].position,
-        rotation: players[socket.id].rotation
-    });
-
-    // Handle player movement
-    socket.on('playerMovement', (movementData) => {
-        players[socket.id].position = movementData.position;
-        players[socket.id].rotation = movementData.rotation;
-        socket.broadcast.emit('playerMoved', {
-            id: socket.id,
-            position: players[socket.id].position,
-            rotation: players[socket.id].rotation
-        });
-    });
-
-    // Handle bullet hits
-    socket.on('bulletHit', (hitPlayerId) => {
-        // Notify the hit player
-        io.to(hitPlayerId).emit('playerHit');
-    });
-
-    socket.on('playerDestroyed', () => {
-        // Reset player position and health
-        if (players[socket.id]) {
-            players[socket.id].position = { x: 0, y: 0.5, z: 0 };
-            socket.broadcast.emit('playerMoved', {
-                id: socket.id,
-                position: players[socket.id].position,
-                rotation: players[socket.id].rotation
+// Create a grid of spawn points with plenty of space between each point
+function generateSpawnPoints() {
+    const points = [];
+    const gridSize = 5;  // 5x5 grid = 25 possible spawn points
+    const spacing = 200; // 200 units between each point
+    
+    for (let i = 0; i < gridSize; i++) {
+        for (let j = 0; j < gridSize; j++) {
+            points.push({
+                x: (i - Math.floor(gridSize/2)) * spacing,
+                y: 0,
+                z: (j - Math.floor(gridSize/2)) * spacing
             });
         }
-    });
+    }
+    
+    // Shuffle the points array for random but unique spawns
+    return points.sort(() => Math.random() - 0.5);
+}
 
-    // Handle disconnection
-    socket.on('disconnect', () => {
-        console.log('A player disconnected');
-        delete players[socket.id];
-        io.emit('playerDisconnected', socket.id);
-    });
+const spawnPoints = generateSpawnPoints();
+let currentSpawnIndex = 0;
+
+function getNextSpawnPoint() {
+    const spawnPoint = spawnPoints[currentSpawnIndex];
+    currentSpawnIndex = (currentSpawnIndex + 1) % spawnPoints.length;
+    return spawnPoint;
+}
+
+// Clean up spawn points when players disconnect
+io.on('disconnect', (socket) => {
+    const player = players[socket.id];
+    if (player) {
+        const pointKey = `${player.position.x},${player.position.z}`;
+        usedSpawnPoints.delete(pointKey);
+    }
+    // ... rest of disconnect handling ...
 });
 
-const PORT = process.env.PORT || 3000;
-http.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-}); 
+// Keep track of connected players and their positions
+let playerCount = 0;
+
+// Just two fixed spawn positions, 1000 units apart
+const SPAWN_POSITIONS = [
+    { x: -500, y: 0, z: 0 },  // First car
+    { x: 500, y: 0, z: 0 }    // Second car
+];
+
+let spawnIndex = 0;
+
+io.on('connection', (socket) => {
+    const playerId = socket.id;
+    playerCount++;
+    
+    // Alternate between the two spawn positions
+    const spawnPosition = SPAWN_POSITIONS[spawnIndex];
+    spawnIndex = (spawnIndex + 1) % 2;  // Toggle between 0 and 1
+    
+    // Initialize the new player
+    players[playerId] = {
+        id: playerId,
+        position: spawnPosition,
+        rotation: { x: 0, y: 0, z: 0 }
+    };
+
+    // When a player disconnects, don't decrease playerCount to keep spawn positions unique
+    socket.on('disconnect', () => {
+        delete players[socket.id];
+        // ... rest of disconnect handling ...
+    });
+
+    // Emit the initial position to the new player
+    socket.emit('initialize', {
+        id: playerId,
+        players: players,
+        position: spawnPosition
+    });
+
+    // ... rest of your connection handling code ...
+});
+
+// ... existing code ...

@@ -3,7 +3,7 @@ const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http, {
     cors: {
-        origin: "https://driving-game-frontend.onrender.com", // Your frontend URL
+        origin: ["https://driving-game-frontend.onrender.com", "http://localhost:3000"],
         methods: ["GET", "POST"],
         credentials: true
     }
@@ -114,6 +114,24 @@ io.on('connection', (socket) => {
             });
         }
     });
+
+    // Add bullet event handler
+    socket.on('bulletCreated', (data) => {
+        console.log('Server received bulletCreated event from:', socket.id);
+        console.log('Bullet data:', data);
+        console.log('Connected clients:', Object.keys(players));
+        
+        // Broadcast the bullet to all other clients
+        socket.broadcast.emit('bulletCreated', data);
+        console.log('Server broadcasted bullet to other clients');
+        
+        // Log the number of connected clients
+        const connectedClients = Object.keys(players).length;
+        console.log('Total connected clients:', connectedClients);
+    });
 });
 
-// ... existing code ...
+const PORT = 8080;
+http.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});

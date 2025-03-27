@@ -14,21 +14,40 @@ if (!renderer) {
 // Socket.IO setup with error handling
 let socket;
 try {
-    socket = io('http://localhost:3000');
+    socket = io('http://localhost:3000', {
+        transports: ['websocket'],
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000
+    });
 } catch (error) {
-    console.error('Failed to connect to server:', error);
+    console.error('Failed to create Socket.IO connection:', error);
 }
 
 // Add connection status logging and game state initialization
 if (socket) {
     socket.on('connect', () => {
-        console.log('Connected to server');
+        console.log('Connected to server with ID:', socket.id);
         // Request current game state when connected
         socket.emit('requestGameState');
     });
 
     socket.on('connect_error', (error) => {
         console.error('Connection error:', error);
+    });
+
+    socket.on('error', (error) => {
+        console.error('Socket error:', error);
+    });
+
+    socket.on('disconnect', (reason) => {
+        console.log('Disconnected from server:', reason);
+    });
+
+    socket.on('reconnect', (attemptNumber) => {
+        console.log('Reconnected to server after', attemptNumber, 'attempts');
+        // Request game state again after reconnection
+        socket.emit('requestGameState');
     });
 
     // Handle initial game state
@@ -183,9 +202,8 @@ const HIT_RADIUS = 3;
 const PARTICLE_COUNT = 10;  // Number of particles for hit effects
 const RESPAWN_DELAY = 3000;  // 3 seconds respawn delay
 const BULLET_DAMAGE = 1;     // Damage per bullet hit (1%)
-
-// Audio
-const hitSound = new Audio('/sounds/hit.mp3');
+const BULLET_COOLDOWN = 250; // 250ms cooldown between shots (2x faster than before)
+let lastShotTime = 0; // Track the last time a shot was fired
 
 // Create health bar
 const healthBar = document.createElement('div');
@@ -389,8 +407,6 @@ socket.on('carCollision', (data) => {
     
     // Effects
     createHitEffect(car.position.clone());
-    hitSound.currentTime = 0;
-    hitSound.play().catch(e => console.log('Sound play failed:', e));
 });
 
 // Add this function with your other collision-related functions
@@ -399,24 +415,26 @@ function checkBuildingCollision(position) {
     return false;
 }
 
-// Add the createBullet function
+// Update the createBullet function
 function createBullet() {
+    console.log('Creating bullet for player:', socket.id);
+    
     // Create bullet geometry and material (smaller size)
-    const bulletGeometry = new THREE.SphereGeometry(0.2, 8, 8);  // Reduced from 0.5 to 0.2
+    const bulletGeometry = new THREE.SphereGeometry(0.2, 8, 8);
     const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
     const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
 
     // Position bullet 5 units in front of car
     bullet.position.copy(car.position);
-    bullet.position.x += Math.sin(car.rotation.y) * 5;  // Changed minus to plus
-    bullet.position.z += Math.cos(car.rotation.y) * 5;  // Changed minus to plus
+    bullet.position.x += Math.sin(car.rotation.y) * 5;
+    bullet.position.z += Math.cos(car.rotation.y) * 5;
     bullet.position.y += 1; // Slightly above the car
 
     // Set bullet direction based on car's rotation
     bullet.direction = new THREE.Vector3(
-        -Math.sin(car.rotation.y),  // Added negative to reverse direction
+        -Math.sin(car.rotation.y),
         0,
-        -Math.cos(car.rotation.y)   // Added negative to reverse direction
+        -Math.cos(car.rotation.y)
     );
 
     // Add creation timestamp and owner ID
@@ -427,19 +445,57 @@ function createBullet() {
     scene.add(bullet);
     bullets.push(bullet);
 
-    // Optional: Play sound effect
-    if (typeof shootSound !== 'undefined' && shootSound) {
-        shootSound.currentTime = 0;
-        shootSound.play().catch(e => console.log('Sound play failed:', e));
-    }
-
-    // Emit bullet creation to other players
-    socket.emit('bulletCreated', {
-        position: bullet.position,
-        direction: bullet.direction,
+    // Emit bullet creation to other players with serialized data
+    const bulletData = {
+        position: {
+            x: bullet.position.x,
+            y: bullet.position.y,
+            z: bullet.position.z
+        },
+        direction: {
+            x: bullet.direction.x,
+            y: bullet.direction.y,
+            z: bullet.direction.z
+        },
         ownerId: socket.id
-    });
+    };
+
+    console.log('Emitting bulletCreated event:', bulletData);
+    socket.emit('bulletCreated', bulletData);
+    console.log('Bullet event emitted, waiting for server response...');
 }
+
+// Update the bulletCreated socket event handler
+socket.on('bulletCreated', (data) => {
+    console.log('Received bulletCreated event:', data);
+    console.log('Current socket ID:', socket.id);
+    
+    // Don't create bullets for our own shots
+    if (data.ownerId === socket.id) {
+        console.log('Ignoring own bullet');
+        return;
+    }
+    
+    console.log('Creating bullet from network data');
+    // Create bullet geometry and material
+    const bulletGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+    const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+
+    // Set bullet position and direction from the received data
+    bullet.position.set(data.position.x, data.position.y, data.position.z);
+    bullet.direction = new THREE.Vector3(data.direction.x, data.direction.y, data.direction.z);
+    
+    // Add creation timestamp and owner ID
+    bullet.createdAt = Date.now();
+    bullet.ownerId = data.ownerId;
+
+    // Add to scene and bullets array
+    scene.add(bullet);
+    bullets.push(bullet);
+
+    console.log('Created bullet from network:', bullet.position, bullet.direction);
+});
 
 // Add this function after the socket event handlers and before the animate function
 function addPlayer(id, playerInfo) {
@@ -554,8 +610,6 @@ function animate() {
                     
                     // Effects for this car
                     createHitEffect(car.position.clone());
-                    hitSound.currentTime = 0;
-                    hitSound.play().catch(e => console.log('Sound play failed:', e));
 
                     // Send to other car (opposite direction)
                     socket.emit('carCollision', {
@@ -571,8 +625,12 @@ function animate() {
 
                 // Handle shooting separately
                 if (shooting) {
-                    console.log('Shooting!');
-                    createBullet();
+                    const currentTime = Date.now();
+                    if (currentTime - lastShotTime >= BULLET_COOLDOWN) {
+                        console.log('Shooting!');
+                        createBullet();
+                        lastShotTime = currentTime;
+                    }
                 }
 
                 // Update camera position
@@ -624,15 +682,11 @@ function animate() {
                                 // Create hit effect
                                 createHitEffect(bullet.position.clone());
                                 
-                                // Play hit sound
-                                hitSound.currentTime = 0;
-                                hitSound.play().catch(e => console.log('Sound play failed:', e));
-                                
                                 // Remove bullet
                                 scene.remove(bullet);
                                 bullets.splice(i, 1);
                                 
-                                // Emit hit event
+                                // Emit hit event with damage
                                 socket.emit('playerHit', {
                                     hitPlayerId: id,
                                     damage: BULLET_DAMAGE
@@ -651,16 +705,20 @@ function animate() {
                             // Create hit effect
                             createHitEffect(bullet.position.clone());
                             
-                            // Play hit sound
-                            hitSound.currentTime = 0;
-                            hitSound.play().catch(e => console.log('Sound play failed:', e));
-                            hitSound.play();
-                            
-                            // Remove bullet and apply damage (1% of max health)
+                            // Remove bullet and apply damage
                             scene.remove(bullet);
                             bullets.splice(i, 1);
+                            
+                            // Apply damage directly to local player
                             playerHealth = Math.max(0, playerHealth - BULLET_DAMAGE);
+                            console.log('Local player hit! Health:', playerHealth);
                             updateHealthBar();
+                            
+                            // Emit hit event to server
+                            socket.emit('playerHit', {
+                                hitPlayerId: socket.id,
+                                damage: BULLET_DAMAGE
+                            });
                             
                             if (playerHealth <= 0) {
                                 playerDeath();
@@ -726,14 +784,30 @@ animate();
 // Make sure renderer is using the correct color
 renderer.setClearColor(0x87ceeb); // Light blue sky color 
 
-// Add health bar update function
+// Update the socket event listener for damage
+socket.on('playerHit', (data) => {
+    console.log('Received hit event, current health:', playerHealth);
+    if (data.hitPlayerId === socket.id) {
+        playerHealth = Math.max(0, playerHealth - data.damage);
+        console.log('Health after hit:', playerHealth);
+        updateHealthBar();
+        
+        if (playerHealth <= 0) {
+            playerDeath();
+        }
+    }
+});
+
+// Update the health bar update function
 function updateHealthBar() {
-    healthFill.style.width = `${playerHealth}%`;
+    console.log('Updating health bar to:', playerHealth);
+    const healthPercentage = Math.max(0, Math.min(100, playerHealth));
+    healthFill.style.width = `${healthPercentage}%`;
     
     // Change color based on health
-    if (playerHealth > 60) {
+    if (healthPercentage > 60) {
         healthFill.style.backgroundColor = '#00ff00';
-    } else if (playerHealth > 30) {
+    } else if (healthPercentage > 30) {
         healthFill.style.backgroundColor = '#ffff00';
     } else {
         healthFill.style.backgroundColor = '#ff0000';
@@ -828,17 +902,6 @@ function respawnPlayer() {
         rotation: car.rotation
     });
 }
-
-// Update the socket event listener for damage
-socket.on('playerHit', () => {
-    // Decrease local player's health when hit (1% of max health)
-    playerHealth = Math.max(0, playerHealth - BULLET_DAMAGE);
-    updateHealthBar();
-    
-    if (playerHealth <= 0) {
-        playerDeath();
-    }
-});
 
 // Add hit effect function
 function createHitEffect(position) {

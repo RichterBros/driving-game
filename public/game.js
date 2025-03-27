@@ -592,6 +592,57 @@ function createSkidMark(position, rotation) {
     }, SKID_MARK_LIFETIME);
 }
 
+// Add these constants with your other constants
+const GRASS_COUNT = 1000;  // Number of grass patches
+const GRASS_AREA = 100;    // Area where grass can spawn
+const GRASS_SIZE = 0.3;    // Size of each grass patch
+
+// Create grass function
+function createGrass() {
+    const MIN_HEIGHT = 1.5;    // Minimum grass height multiplier
+    const MAX_HEIGHT = 3.0;    // Maximum grass height multiplier
+
+    for (let i = 0; i < GRASS_COUNT; i++) {
+        // Random height for this grass blade
+        const height = GRASS_SIZE * (MIN_HEIGHT + Math.random() * (MAX_HEIGHT - MIN_HEIGHT));
+        
+        // Create a tapered grass blade shape with random height
+        const grassShape = new THREE.Shape();
+        grassShape.moveTo(-GRASS_SIZE/2, 0);     // Bottom left
+        grassShape.lineTo(GRASS_SIZE/2, 0);      // Bottom right
+        grassShape.lineTo(0, height);            // Top point (random height)
+        grassShape.lineTo(-GRASS_SIZE/2, 0);     // Back to start
+
+        const grassGeometry = new THREE.ShapeGeometry(grassShape);
+        const grassMaterial = new THREE.MeshBasicMaterial({
+            color: 0x3a9d23,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.8
+        });
+
+        const grass = new THREE.Mesh(grassGeometry, grassMaterial);
+        
+        const x = (Math.random() - 0.5) * GRASS_AREA;
+        const z = (Math.random() - 0.5) * GRASS_AREA;
+        
+        const distanceFromCenter = Math.sqrt(x * x + z * z);
+        if (distanceFromCenter > trackRadius - trackWidth/2 && 
+            distanceFromCenter < trackRadius + trackWidth/2) {
+            continue;
+        }
+        
+        grass.position.set(x, 0, z);
+        grass.rotation.y = Math.random() * Math.PI;
+        grass.rotation.z = (Math.random() * 0.2 - 0.1);
+        
+        scene.add(grass);
+    }
+}
+
+// Call createGrass after scene initialization
+createGrass();
+
 // Game loop
 function animate() {
     if (!isPlayerDead) {  // Only animate if player is alive

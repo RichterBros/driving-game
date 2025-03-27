@@ -1,20 +1,74 @@
 // Three.js setup
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer();
+const renderer = new THREE.WebGLRenderer({ antialias: true }); // Added antialias for smoother graphics
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x87ceeb); // Set sky blue background color
 document.body.appendChild(renderer.domElement);
 
-// Socket.IO setup - make sure this URL matches your Render backend service
-const socket = io('http://localhost:3000');
+// Error handling for Three.js
+if (!renderer) {
+    console.error('Failed to create WebGL renderer');
+}
 
-// Lighting
+// Socket.IO setup with error handling
+let socket;
+try {
+    socket = io('http://localhost:3000');
+} catch (error) {
+    console.error('Failed to connect to server:', error);
+}
+
+// Add connection status logging and game state initialization
+if (socket) {
+    socket.on('connect', () => {
+        console.log('Connected to server');
+        // Request current game state when connected
+        socket.emit('requestGameState');
+    });
+
+    socket.on('connect_error', (error) => {
+        console.error('Connection error:', error);
+    });
+
+    // Handle initial game state
+    socket.on('gameState', (gameState) => {
+        console.log('Received game state:', gameState);
+        // Clear existing players
+        Object.keys(players).forEach(id => {
+            if (players[id]) {
+                scene.remove(players[id]);
+                delete players[id];
+            }
+        });
+
+        // Add all players from the game state
+        if (gameState.players) {
+            Object.keys(gameState.players).forEach(id => {
+                if (id !== socket.id) {
+                    addPlayer(id, gameState.players[id]);
+                }
+            });
+        }
+
+        // Update player count
+        if (document.getElementById('playerCount')) {
+            document.getElementById('playerCount').textContent = Object.keys(gameState.players || {}).length;
+        }
+    });
+}
+
+// Lighting with error checking
 const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
-scene.add(ambientLight);
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
 directionalLight.position.set(0, 20, 10);
-scene.add(directionalLight);
+
+if (!ambientLight || !directionalLight) {
+    console.error('Failed to create lights');
+} else {
+    scene.add(ambientLight);
+    scene.add(directionalLight);
+}
 
 // Track
 const trackRadius = 30;
@@ -128,7 +182,7 @@ const BULLET_LIFETIME = 1000;
 const HIT_RADIUS = 3;
 const PARTICLE_COUNT = 10;  // Number of particles for hit effects
 const RESPAWN_DELAY = 3000;  // 3 seconds respawn delay
-const BULLET_DAMAGE = 1;     // Damage per bullet hit
+const BULLET_DAMAGE = 1;     // Damage per bullet hit (1%)
 
 // Audio
 const hitSound = new Audio('/sounds/hit.mp3');
@@ -156,9 +210,9 @@ document.body.appendChild(healthBar);
 
 // Variables - these should be the ONLY declarations of these variables
 let currentSpeed = 0;
-let maxSpeed = 0.5;
-let acceleration = 0.01;
-let deceleration = 0.008;
+let maxSpeed = 0.25;  // Reduced from 0.5 to 0.25 (50% reduction)
+let acceleration = 0.005;  // Reduced from 0.01 to 0.005 (50% reduction)
+let deceleration = 0.004;  // Reduced from 0.008 to 0.004 (50% reduction)
 let isPlayerDead = false;
 let isRightMouseDown = false;
 let playerHealth = 100;
@@ -439,224 +493,229 @@ function addPlayer(id, playerInfo) {
 // Game loop
 function animate() {
     if (!isPlayerDead) {  // Only animate if player is alive
-        requestAnimationFrame(animate);
+        try {
+            requestAnimationFrame(animate);
 
-        if (localPlayer && !isPlayerDead) {
-            const rotationSpeed = 0.03;
+            // Only proceed with animation if we have a valid local player
+            if (localPlayer && !isPlayerDead) {
+                const rotationSpeed = 0.03;
 
-            // Store previous position and rotation
-            const previousPosition = car.position.clone();
-            const previousRotation = car.rotation.y;
+                // Store previous position and rotation
+                const previousPosition = car.position.clone();
+                const previousRotation = car.rotation.y;
 
-            // Combine keyboard and touch inputs
-            const up = keys.ArrowUp || touchStates.ArrowUp;
-            const down = keys.ArrowDown || touchStates.ArrowDown;
-            const left = keys.ArrowLeft || touchStates.ArrowLeft;
-            const right = keys.ArrowRight || touchStates.ArrowRight;
-            const shooting = keys[' '] || touchStates[' '];
+                // Combine keyboard and touch inputs
+                const up = keys.ArrowUp || touchStates.ArrowUp;
+                const down = keys.ArrowDown || touchStates.ArrowDown;
+                const left = keys.ArrowLeft || touchStates.ArrowLeft;
+                const right = keys.ArrowRight || touchStates.ArrowRight;
+                const shooting = keys[' '] || touchStates[' '];
 
-            // Use combined inputs for movement
-            if (up) {
-                currentSpeed = Math.min(currentSpeed + acceleration, maxSpeed);
-            } else if (down) {
-                currentSpeed = Math.max(currentSpeed - acceleration, -maxSpeed);
-            } else {
-                if (currentSpeed > 0) {
-                    currentSpeed = Math.max(0, currentSpeed - deceleration);
-                } else if (currentSpeed < 0) {
-                    currentSpeed = Math.min(0, currentSpeed + deceleration);
+                // Use combined inputs for movement
+                if (up) {
+                    currentSpeed = Math.min(currentSpeed + acceleration, maxSpeed);
+                } else if (down) {
+                    currentSpeed = Math.max(currentSpeed - acceleration, -maxSpeed);
+                } else {
+                    if (currentSpeed > 0) {
+                        currentSpeed = Math.max(0, currentSpeed - deceleration);
+                    } else if (currentSpeed < 0) {
+                        currentSpeed = Math.min(0, currentSpeed + deceleration);
+                    }
                 }
-            }
 
-            // Move car
-            car.position.x -= Math.sin(car.rotation.y) * currentSpeed;
-            car.position.z -= Math.cos(car.rotation.y) * currentSpeed;
+                // Move car
+                car.position.x -= Math.sin(car.rotation.y) * currentSpeed;
+                car.position.z -= Math.cos(car.rotation.y) * currentSpeed;
 
-            // Check for collisions AFTER movement
-            const collision = checkPlayerCollisions(car.position);
-            
-            if (collision) {
-                // Calculate collision direction
-                const dx = car.position.x - collision.otherPosition.x;
-                const dz = car.position.z - collision.otherPosition.z;
-                const distance = Math.sqrt(dx * dx + dz * dz);
+                // Check for collisions AFTER movement
+                const collision = checkPlayerCollisions(car.position);
                 
-                // Normalize direction
-                const dirX = dx / distance;
-                const dirZ = dz / distance;
+                if (collision) {
+                    // Calculate collision direction
+                    const dx = car.position.x - collision.otherPosition.x;
+                    const dz = car.position.z - collision.otherPosition.z;
+                    const distance = Math.sqrt(dx * dx + dz * dz);
+                    
+                    // Normalize direction
+                    const dirX = dx / distance;
+                    const dirZ = dz / distance;
+                    
+                    // Calculate forces
+                    const forceX = dirX * COLLISION_FORCE;
+                    const forceZ = dirZ * COLLISION_FORCE;
+                    const spin = (Math.random() > 0.5 ? 1 : -1) * COLLISION_SPIN;
+
+                    // Apply to this car
+                    car.position.x += forceX;
+                    car.position.z += forceZ;
+                    car.rotation.y += spin;
+                    currentSpeed = 0;
+                    
+                    // Effects for this car
+                    createHitEffect(car.position.clone());
+                    hitSound.currentTime = 0;
+                    hitSound.play().catch(e => console.log('Sound play failed:', e));
+
+                    // Send to other car (opposite direction)
+                    socket.emit('carCollision', {
+                        forceX: -forceX,  // Opposite direction for other car
+                        forceZ: -forceZ,  // Opposite direction for other car
+                        spin: -spin       // Opposite spin for other car
+                    });
+                }
+
+                // Handle turning
+                if (left) car.rotation.y += rotationSpeed;
+                if (right) car.rotation.y -= rotationSpeed;
+
+                // Handle shooting separately
+                if (shooting) {
+                    console.log('Shooting!');
+                    createBullet();
+                }
+
+                // Update camera position
+                if (!isRightMouseDown) {
+                    // Normal following camera
+                    const cameraOffset = new THREE.Vector3(0, 5, 10);
+                    const cameraPosition = car.position.clone();
+                    const rotationMatrix = new THREE.Matrix4();
+                    rotationMatrix.makeRotationY(car.rotation.y);
+                    cameraOffset.applyMatrix4(rotationMatrix);
+                    cameraPosition.add(cameraOffset);
+                    camera.position.lerp(cameraPosition, 0.1);
+                } else {
+                    // Free rotating camera
+                    const cameraOffset = new THREE.Vector3(
+                        Math.sin(cameraAngleY) * CAMERA_DISTANCE * Math.cos(cameraAngleX),
+                        Math.sin(cameraAngleX) * CAMERA_DISTANCE,
+                        Math.cos(cameraAngleY) * CAMERA_DISTANCE * Math.cos(cameraAngleX)
+                    );
+                    camera.position.copy(car.position).add(cameraOffset);
+                }
                 
-                // Calculate forces
-                const forceX = dirX * COLLISION_FORCE;
-                const forceZ = dirZ * COLLISION_FORCE;
-                const spin = (Math.random() > 0.5 ? 1 : -1) * COLLISION_SPIN;
+                camera.lookAt(car.position);
 
-                // Apply to this car
-                car.position.x += forceX;
-                car.position.z += forceZ;
-                car.rotation.y += spin;
-                currentSpeed = 0;
-                
-                // Effects for this car
-                createHitEffect(car.position.clone());
-                hitSound.currentTime = 0;
-                hitSound.play().catch(e => console.log('Sound play failed:', e));
+                // Rotate wheels based on speed
+                const wheelRotationSpeed = currentSpeed * 5;
+                wheelFL.rotation.x += wheelRotationSpeed;
+                wheelFR.rotation.x += wheelRotationSpeed;
+                wheelBL.rotation.x += wheelRotationSpeed;
+                wheelBR.rotation.x += wheelRotationSpeed;
 
-                // Send to other car (opposite direction)
-                socket.emit('carCollision', {
-                    forceX: -forceX,  // Opposite direction for other car
-                    forceZ: -forceZ,  // Opposite direction for other car
-                    spin: -spin       // Opposite spin for other car
-                });
-            }
+                // Update bullets and check collisions
+                for (let i = bullets.length - 1; i >= 0; i--) {
+                    const bullet = bullets[i];
+                    
+                    // Move bullet
+                    bullet.position.x += bullet.direction.x * BULLET_SPEED;
+                    bullet.position.z += bullet.direction.z * BULLET_SPEED;
+                    
+                    // Check collision with other players
+                    Object.keys(players).forEach(id => {
+                        if (id !== socket.id && bullet.ownerId === socket.id) {
+                            const player = players[id];
+                            const dx = bullet.position.x - player.position.x;
+                            const dz = bullet.position.z - player.position.z;
+                            const distance = Math.sqrt(dx * dx + dz * dz);
 
-            // Handle turning
-            if (left) car.rotation.y += rotationSpeed;
-            if (right) car.rotation.y -= rotationSpeed;
+                            if (distance < HIT_RADIUS) {
+                                // Create hit effect
+                                createHitEffect(bullet.position.clone());
+                                
+                                // Play hit sound
+                                hitSound.currentTime = 0;
+                                hitSound.play().catch(e => console.log('Sound play failed:', e));
+                                
+                                // Remove bullet
+                                scene.remove(bullet);
+                                bullets.splice(i, 1);
+                                
+                                // Emit hit event
+                                socket.emit('playerHit', {
+                                    hitPlayerId: id,
+                                    damage: BULLET_DAMAGE
+                                });
+                            }
+                        }
+                    });
 
-            // Handle shooting separately
-            if (shooting) {
-                console.log('Shooting!');
-                createBullet();
-            }
-
-            // Update camera position
-            if (!isRightMouseDown) {
-                // Normal following camera
-                const cameraOffset = new THREE.Vector3(0, 5, 10);
-                const cameraPosition = car.position.clone();
-                const rotationMatrix = new THREE.Matrix4();
-                rotationMatrix.makeRotationY(car.rotation.y);
-                cameraOffset.applyMatrix4(rotationMatrix);
-                cameraPosition.add(cameraOffset);
-                camera.position.lerp(cameraPosition, 0.1);
-            } else {
-                // Free rotating camera
-                const cameraOffset = new THREE.Vector3(
-                    Math.sin(cameraAngleY) * CAMERA_DISTANCE * Math.cos(cameraAngleX),
-                    Math.sin(cameraAngleX) * CAMERA_DISTANCE,
-                    Math.cos(cameraAngleY) * CAMERA_DISTANCE * Math.cos(cameraAngleX)
-                );
-                camera.position.copy(car.position).add(cameraOffset);
-            }
-            
-            camera.lookAt(car.position);
-
-            // Rotate wheels based on speed
-            const wheelRotationSpeed = currentSpeed * 5;
-            wheelFL.rotation.x += wheelRotationSpeed;
-            wheelFR.rotation.x += wheelRotationSpeed;
-            wheelBL.rotation.x += wheelRotationSpeed;
-            wheelBR.rotation.x += wheelRotationSpeed;
-
-            // Update bullets and check collisions
-            for (let i = bullets.length - 1; i >= 0; i--) {
-                const bullet = bullets[i];
-                
-                // Move bullet
-                bullet.position.x += bullet.direction.x * BULLET_SPEED;
-                bullet.position.z += bullet.direction.z * BULLET_SPEED;
-                
-                // Check collision with other players
-                Object.keys(players).forEach(id => {
-                    if (id !== socket.id && bullet.ownerId === socket.id) {
-                        const player = players[id];
-                        const dx = bullet.position.x - player.position.x;
-                        const dz = bullet.position.z - player.position.z;
-                        const distance = Math.sqrt(dx * dx + dz * dz);
-
-                        if (distance < HIT_RADIUS) {
+                    // Check if bullet hit local player
+                    if (bullet.ownerId !== socket.id) {  // Only check collision if bullet wasn't shot by local player
+                        const localDx = bullet.position.x - car.position.x;
+                        const localDz = bullet.position.z - car.position.z;
+                        const localDistance = Math.sqrt(localDx * localDx + localDz * localDz);
+                        
+                        if (localDistance < HIT_RADIUS) {
                             // Create hit effect
                             createHitEffect(bullet.position.clone());
                             
                             // Play hit sound
                             hitSound.currentTime = 0;
                             hitSound.play().catch(e => console.log('Sound play failed:', e));
+                            hitSound.play();
                             
-                            // Remove bullet
+                            // Remove bullet and apply damage (1% of max health)
                             scene.remove(bullet);
                             bullets.splice(i, 1);
+                            playerHealth = Math.max(0, playerHealth - BULLET_DAMAGE);
+                            updateHealthBar();
                             
-                            // Emit hit event
-                            socket.emit('playerHit', {
-                                hitPlayerId: id,
-                                damage: BULLET_DAMAGE
-                            });
+                            if (playerHealth <= 0) {
+                                playerDeath();
+                            }
                         }
                     }
-                });
 
-                // Check if bullet hit local player
-                if (bullet.ownerId !== socket.id) {  // Only check collision if bullet wasn't shot by local player
-                    const localDx = bullet.position.x - car.position.x;
-                    const localDz = bullet.position.z - car.position.z;
-                    const localDistance = Math.sqrt(localDx * localDx + localDz * localDz);
-                    
-                    if (localDistance < HIT_RADIUS) {
-                        // Create hit effect
-                        createHitEffect(bullet.position.clone());
-                        
-                        // Play hit sound
-                        hitSound.currentTime = 0;
-                        hitSound.play().catch(e => console.log('Sound play failed:', e));
-                        hitSound.play();
-                        
-                        // Remove bullet and apply damage
+                    // Remove old bullets
+                    if (Date.now() - bullet.createdAt > BULLET_LIFETIME) {
                         scene.remove(bullet);
                         bullets.splice(i, 1);
-                        playerHealth = Math.max(0, playerHealth - 1);
-                        updateHealthBar();
-                        
-                        if (playerHealth <= 0) {
-                            playerDeath();
-                        }
                     }
                 }
 
-                // Remove old bullets
-                if (Date.now() - bullet.createdAt > BULLET_LIFETIME) {
-                    scene.remove(bullet);
-                    bullets.splice(i, 1);
+                // Check building collisions
+                const buildingCollision = checkBuildingCollision(car.position);
+                if (buildingCollision) {
+                    // Move back to previous position
+                    car.position.copy(previousPosition);
+                    
+                    // Apply bounce
+                    const bounceForce = 0.3; // Adjust for bounciness
+                    car.position.x += buildingCollision.x * bounceForce;
+                    car.position.z += buildingCollision.y * bounceForce;
+                    
+                    // Reduce speed on collision
+                    currentSpeed *= -0.5; // Bounce back at half speed
                 }
+
+                // Emit position more frequently and with complete data
+                socket.emit('playerMovement', {
+                    position: {
+                        x: car.position.x,
+                        y: car.position.y,
+                        z: car.position.z
+                    },
+                    rotation: {
+                        y: car.rotation.y
+                    }
+                });
             }
 
-            // Check building collisions
-            const buildingCollision = checkBuildingCollision(car.position);
-            if (buildingCollision) {
-                // Move back to previous position
-                car.position.copy(previousPosition);
-                
-                // Apply bounce
-                const bounceForce = 0.3; // Adjust for bounciness
-                car.position.x += buildingCollision.x * bounceForce;
-                car.position.z += buildingCollision.y * bounceForce;
-                
-                // Reduce speed on collision
-                currentSpeed *= -0.5; // Bounce back at half speed
-            }
-
-            // Emit position more frequently and with complete data
-            socket.emit('playerMovement', {
-                position: {
-                    x: car.position.x,
-                    y: car.position.y,
-                    z: car.position.z
-                },
-                rotation: {
-                    y: car.rotation.y
+            // Update other players' positions
+            Object.keys(players).forEach((id) => {
+                if (players[id]) {
+                    const player = players[id];
+                    // Remove the lerp to fix static position issue
+                    // Just ensure the position and rotation are updated from socket events
                 }
             });
+
+            renderer.render(scene, camera);
+        } catch (error) {
+            console.error('Animation error:', error);
         }
-
-        // Update other players' positions
-        Object.keys(players).forEach((id) => {
-            if (players[id]) {
-                const player = players[id];
-                // Remove the lerp to fix static position issue
-                // Just ensure the position and rotation are updated from socket events
-            }
-        });
-
-        renderer.render(scene, camera);
     }
 }
 
@@ -770,10 +829,10 @@ function respawnPlayer() {
     });
 }
 
-// Add socket event listeners for damage
+// Update the socket event listener for damage
 socket.on('playerHit', () => {
-    // Decrease local player's health when hit
-    playerHealth = Math.max(0, playerHealth - 1);
+    // Decrease local player's health when hit (1% of max health)
+    playerHealth = Math.max(0, playerHealth - BULLET_DAMAGE);
     updateHealthBar();
     
     if (playerHealth <= 0) {
@@ -835,4 +894,31 @@ function respawnPlayer() {
     isPlayerDead = false;
     // Add respawn logic here
 }
+
+// Update the initialization check
+window.addEventListener('load', () => {
+    console.log('Window loaded, initializing game...');
+    try {
+        // Start game
+        localPlayer = car;
+        animate();
+        console.log('Game initialized successfully');
+        
+        // Emit initial position
+        if (socket) {
+            socket.emit('playerMovement', {
+                position: {
+                    x: car.position.x,
+                    y: car.position.y,
+                    z: car.position.z
+                },
+                rotation: {
+                    y: car.rotation.y
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Failed to initialize game:', error);
+    }
+});
 

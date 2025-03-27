@@ -92,6 +92,28 @@ io.on('connection', (socket) => {
     });
 
     // ... rest of your connection handling code ...
+
+    // Add this with your other socket event handlers
+    socket.on('requestGameState', () => {
+        // Send current game state to the requesting client
+        socket.emit('gameState', {
+            players: players
+        });
+    });
+
+    // Update the player connection handler
+    socket.on('playerMovement', (playerInfo) => {
+        if (players[socket.id]) {
+            players[socket.id].position = playerInfo.position;
+            players[socket.id].rotation = playerInfo.rotation;
+            // Broadcast to all other players
+            socket.broadcast.emit('playerMoved', {
+                id: socket.id,
+                position: playerInfo.position,
+                rotation: playerInfo.rotation
+            });
+        }
+    });
 });
 
 // ... existing code ...

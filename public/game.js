@@ -484,4 +484,6 @@ function updateHealthBar(health) {
     } else {
         healthFill.style.backgroundColor = '#ff0000'; // Red
     }
-} 
+}
+
+const socket = io('https://driving-game-server.onrender.com'); // Replace with your actual backend URL 

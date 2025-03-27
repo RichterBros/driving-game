@@ -279,17 +279,19 @@ function checkBuildingCollision(carPosition) {
     return null;
 }
 
-// Add health display to HTML
+// Update the health bar styles
 const healthDisplay = document.createElement('div');
-healthDisplay.style.position = 'absolute';
-healthDisplay.style.top = '20px';
-healthDisplay.style.left = '20px';
+healthDisplay.style.position = 'fixed'; // Change to fixed positioning
+healthDisplay.style.bottom = '80px'; // Position above touch controls
+healthDisplay.style.left = '50%'; // Center horizontally
+healthDisplay.style.transform = 'translateX(-50%)'; // Center alignment
 healthDisplay.style.width = '200px';
 healthDisplay.style.height = '20px';
 healthDisplay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
 healthDisplay.style.border = '2px solid white';
 healthDisplay.style.borderRadius = '10px';
 healthDisplay.style.overflow = 'hidden';
+healthDisplay.style.zIndex = '1000'; // Make sure it's above other elements
 
 const healthFill = document.createElement('div');
 healthFill.style.width = '100%';

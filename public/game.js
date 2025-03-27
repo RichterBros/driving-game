@@ -411,6 +411,26 @@ buttons.right.addEventListener('touchstart', (e) => {
 });
 buttons.right.addEventListener('touchend', () => touchStates.ArrowRight = false);
 
+// Add to the existing touch controls setup
+const shootButton = createButton('🔫'); // Using an emoji for the shoot button
+shootButton.style.backgroundColor = 'rgba(255, 0, 0, 0.3)'; // Reddish background
+shootButton.style.position = 'fixed';
+shootButton.style.right = '20px'; // Position on right side
+shootButton.style.bottom = '20px';
+
+// Add shooting state
+touchStates[' '] = false; // Space key state for shooting
+
+// Add touch listeners for shoot button
+shootButton.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    touchStates[' '] = true;
+});
+
+shootButton.addEventListener('touchend', () => {
+    touchStates[' '] = false;
+});
+
 // Game loop
 function animate() {
     requestAnimationFrame(animate);
@@ -449,7 +469,7 @@ function animate() {
         if (right) car.rotation.y -= rotationSpeed * (Math.abs(currentSpeed) / MAX_SPEED);
 
         // Handle shooting
-        if (keys[' ']) {
+        if (keys[' '] || touchStates[' ']) {
             createBullet(gunLeft);
             createBullet(gunRight);
         }

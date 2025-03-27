@@ -341,11 +341,22 @@ document.addEventListener('mousedown', (e) => {
     // Right mouse button
     if (e.button === 2) {
         isRightMouseDown = true;
+        // Store initial mouse position
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+        
+        // Calculate initial camera angles based on current camera position
+        const dx = camera.position.x - car.position.x;
+        const dy = camera.position.y - car.position.y;
+        const dz = camera.position.z - car.position.z;
+        
+        // Calculate initial angles from current camera position
+        cameraAngleY = Math.atan2(dx, dz);
+        cameraAngleX = Math.atan2(dy, Math.sqrt(dx * dx + dz * dz));
     }
 });
 
 document.addEventListener('mouseup', (e) => {
-    // Right mouse button
     if (e.button === 2) {
         isRightMouseDown = false;
     }
@@ -408,12 +419,6 @@ socket.on('carCollision', (data) => {
     // Effects
     createHitEffect(car.position.clone());
 });
-
-// Add this function with your other collision-related functions
-function checkBuildingCollision(position) {
-    // Simple version - no building collisions
-    return false;
-}
 
 // Update the createBullet function
 function createBullet() {
@@ -984,4 +989,34 @@ window.addEventListener('load', () => {
         console.error('Failed to initialize game:', error);
     }
 });
+
+function checkBuildingCollision(position) {
+    // Get building positions from the building creation loop
+    for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2;
+        const radius = trackRadius + trackWidth + 10;
+        const buildingX = Math.cos(angle) * radius;
+        const buildingZ = Math.sin(angle) * radius;
+        
+        // Building dimensions
+        const buildingWidth = 8;
+        const buildingDepth = 8;
+        
+        // Calculate distance from car to building center
+        const dx = position.x - buildingX;
+        const dz = position.z - buildingZ;
+        
+        // Check if car is within building bounds (box collision)
+        if (Math.abs(dx) < buildingWidth/2 + 1 && // +1 for car width
+            Math.abs(dz) < buildingDepth/2 + 2) {  // +2 for car length
+            
+            // Return collision normal
+            return {
+                x: dx > 0 ? 1 : -1,
+                y: dz > 0 ? 1 : -1
+            };
+        }
+    }
+    return false;
+}
 

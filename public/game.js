@@ -334,16 +334,16 @@ function createExplosion(position) {
 const touchControls = document.createElement('div');
 touchControls.style.position = 'fixed';
 touchControls.style.bottom = '20px';
-touchControls.style.left = '0';
-touchControls.style.right = '0';
-touchControls.style.display = 'none'; // Hide by default, show only on touch devices
-touchControls.style.display = 'flex'; // Use flex to align items
-touchControls.style.justifyContent = 'space-between'; // Space between movement and shoot controls
-touchControls.style.padding = '0 20px'; // Add padding on sides
+touchControls.style.left = '20px';
+touchControls.style.right = '20px';
+touchControls.style.display = 'none';
+touchControls.style.display = 'flex';
+touchControls.style.justifyContent = 'space-between';
 
-// Create a container for movement buttons
+// Create a container for movement buttons with specific width
 const moveControls = document.createElement('div');
 moveControls.style.display = 'inline-block';
+moveControls.style.width = '200px';
 
 // Create touch buttons
 const buttonStyle = `
@@ -383,10 +383,11 @@ touchControls.appendChild(moveControls);
 // Update shoot button style
 const shootButton = createButton('🔫');
 shootButton.style.backgroundColor = 'rgba(255, 0, 0, 0.3)';
-shootButton.style.width = '80px'; // Make it slightly larger
+shootButton.style.width = '80px';
 shootButton.style.height = '80px';
 shootButton.style.lineHeight = '80px';
 shootButton.style.fontSize = '32px';
+shootButton.style.marginLeft = '300px';
 
 // Add containers to main touch controls
 touchControls.appendChild(shootButton);

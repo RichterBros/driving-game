@@ -72,33 +72,27 @@ const car = new THREE.Mesh(carGeometry, carMaterial);
 car.position.set(trackRadius, 0.5, 0);
 car.rotation.y = Math.PI / 2;
 
-// Wheels
+// Add wheels to the existing car
 const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
 const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
 
-// Create wheels and position them relative to the car body
-const wheelFL = new THREE.Mesh(wheelGeometry, wheelMaterial);
-const wheelFR = new THREE.Mesh(wheelGeometry, wheelMaterial);
-const wheelBL = new THREE.Mesh(wheelGeometry, wheelMaterial);
-const wheelBR = new THREE.Mesh(wheelGeometry, wheelMaterial);
+// Create wheels
+const wheelPositions = [
+    [-1.2, -0.3, 1.2],  // Front Left
+    [1.2, -0.3, 1.2],   // Front Right
+    [-1.2, -0.3, -1.2], // Back Left
+    [1.2, -0.3, -1.2]   // Back Right
+];
 
-// Position wheels
-wheelFL.position.set(-1.2, -0.3, 1.2);
-wheelFR.position.set(1.2, -0.3, 1.2);
-wheelBL.position.set(-1.2, -0.3, -1.2);
-wheelBR.position.set(1.2, -0.3, -1.2);
+const wheels = wheelPositions.map(pos => {
+    const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+    wheel.position.set(pos[0], pos[1], pos[2]);
+    wheel.rotation.z = Math.PI / 2;
+    car.add(wheel);
+    return wheel;
+});
 
-// Rotate wheels to correct orientation
-wheelFL.rotation.z = Math.PI / 2;
-wheelFR.rotation.z = Math.PI / 2;
-wheelBL.rotation.z = Math.PI / 2;
-wheelBR.rotation.z = Math.PI / 2;
-
-// Add wheels to car
-car.add(wheelFL);
-car.add(wheelFR);
-car.add(wheelBL);
-car.add(wheelBR);
+car.wheels = wheels;
 
 scene.add(car);
 
@@ -209,8 +203,15 @@ function addPlayer(id, playerInfo) {
     const playerCar = new THREE.Mesh(playerCarGeometry, playerCarMaterial);
     
     // Add wheels to the remote player's car
-    addWheelsTocar(playerCar);
+    const remoteWheels = wheelPositions.map(pos => {
+        const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+        wheel.position.set(pos[0], pos[1], pos[2]);
+        wheel.rotation.z = Math.PI / 2;
+        playerCar.add(wheel);
+        return wheel;
+    });
     
+    playerCar.wheels = remoteWheels;
     playerCar.position.copy(playerInfo.position);
     playerCar.rotation.y = playerInfo.rotation.y;
     scene.add(playerCar);
@@ -478,10 +479,9 @@ function animate() {
 
         // Rotate wheels based on speed
         const wheelRotationSpeed = currentSpeed * 5;
-        wheelFL.rotation.x += wheelRotationSpeed;
-        wheelFR.rotation.x += wheelRotationSpeed;
-        wheelBL.rotation.x += wheelRotationSpeed;
-        wheelBR.rotation.x += wheelRotationSpeed;
+        car.wheels.forEach(wheel => {
+            wheel.rotation.x += wheelRotationSpeed;
+        });
 
         // Update bullets
         for (let i = bullets.length - 1; i >= 0; i--) {
@@ -673,35 +673,6 @@ socket.on('playerHit', () => {
 // Add meta viewport tag to your HTML for proper mobile scaling
 // Add this to your index.html <head> section:
 // <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"> 
-
-// Instead of creating a new car, update your existing car with wheels
-function addWheelsTocar(carMesh) {
-    // Wheels
-    const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
-    const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
-
-    // Create wheels
-    const wheelPositions = [
-        [-1.2, -0.3, 1.2],  // Front Left
-        [1.2, -0.3, 1.2],   // Front Right
-        [-1.2, -0.3, -1.2], // Back Left
-        [1.2, -0.3, -1.2]   // Back Right
-    ];
-
-    const wheels = wheelPositions.map(pos => {
-        const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-        wheel.position.set(pos[0], pos[1], pos[2]);
-        wheel.rotation.z = Math.PI / 2;
-        carMesh.add(wheel);
-        return wheel;
-    });
-
-    carMesh.wheels = wheels;
-    return carMesh;
-}
-
-// Add wheels to your existing car
-addWheelsTocar(car);
 
 // Update the animate function to rotate all wheels
 function animate() {

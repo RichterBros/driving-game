@@ -136,12 +136,14 @@ const hitSound = new Audio('/sounds/hit.mp3');
 // Create health bar
 const healthBar = document.createElement('div');
 healthBar.style.position = 'fixed';
-healthBar.style.top = '20px';
+healthBar.style.bottom = '20px';  // Changed from top to bottom
 healthBar.style.left = '20px';
 healthBar.style.width = '200px';
 healthBar.style.height = '20px';
 healthBar.style.backgroundColor = '#333';
 healthBar.style.border = '2px solid #fff';
+healthBar.style.borderRadius = '10px';  // Added rounded corners
+healthBar.style.overflow = 'hidden';    // Ensure rounded corners are visible
 
 const healthFill = document.createElement('div');
 healthFill.style.width = '100%';
@@ -383,6 +385,55 @@ function createBullet() {
         direction: bullet.direction,
         ownerId: socket.id
     });
+}
+
+// Add this function after the socket event handlers and before the animate function
+function addPlayer(id, playerInfo) {
+    // Create a new car for the other player
+    const otherCarGeometry = new THREE.BoxGeometry(2, 1, 4);
+    const otherCarMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 }); // Red color for other players
+    const otherCar = new THREE.Mesh(otherCarGeometry, otherCarMaterial);
+    
+    // Set initial position and rotation
+    otherCar.position.set(
+        playerInfo.position.x,
+        playerInfo.position.y,
+        playerInfo.position.z
+    );
+    otherCar.rotation.y = playerInfo.rotation.y;
+    
+    // Add wheels to the other car
+    const otherWheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
+    const otherWheelMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+    
+    const otherWheelFL = new THREE.Mesh(otherWheelGeometry, otherWheelMaterial);
+    const otherWheelFR = new THREE.Mesh(otherWheelGeometry, otherWheelMaterial);
+    const otherWheelBL = new THREE.Mesh(otherWheelGeometry, otherWheelMaterial);
+    const otherWheelBR = new THREE.Mesh(otherWheelGeometry, otherWheelMaterial);
+    
+    // Position wheels
+    otherWheelFL.position.set(-1.2, -0.3, 1.2);
+    otherWheelFR.position.set(1.2, -0.3, 1.2);
+    otherWheelBL.position.set(-1.2, -0.3, -1.2);
+    otherWheelBR.position.set(1.2, -0.3, -1.2);
+    
+    // Rotate wheels to correct orientation
+    otherWheelFL.rotation.z = Math.PI / 2;
+    otherWheelFR.rotation.z = Math.PI / 2;
+    otherWheelBL.rotation.z = Math.PI / 2;
+    otherWheelBR.rotation.z = Math.PI / 2;
+    
+    // Add wheels to other car
+    otherCar.add(otherWheelFL);
+    otherCar.add(otherWheelFR);
+    otherCar.add(otherWheelBL);
+    otherCar.add(otherWheelBR);
+    
+    // Add the car to the scene
+    scene.add(otherCar);
+    
+    // Store the player in the players object
+    players[id] = otherCar;
 }
 
 // Game loop

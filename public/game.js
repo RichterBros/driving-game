@@ -3,6 +3,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x87ceeb); // Set sky blue background color
 document.body.appendChild(renderer.domElement);
 
 // Socket.IO setup - make sure this URL matches your Render backend service
@@ -58,11 +59,11 @@ for (let i = 0; i < 12; i++) {
 }
 
 // Update ground size and color
-const groundGeometry = new THREE.PlaneGeometry(200, 200);
+const groundGeometry = new THREE.PlaneGeometry(100, 100);
 const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x3a7d44 });
 const ground = new THREE.Mesh(groundGeometry, groundMaterial);
 ground.rotation.x = -Math.PI / 2;
-ground.position.y = -0.1; // Lower the ground slightly below the track
+ground.position.y = -0.1; // Slightly below zero
 scene.add(ground);
 
 // Player car
@@ -103,8 +104,8 @@ car.add(wheelBR);
 scene.add(car);
 
 // Camera position
-camera.position.set(0, 5, 15);
-camera.lookAt(car.position);
+camera.position.set(0, 5, 10);
+camera.lookAt(0, 0, 0);
 
 const players = {};
 let localPlayer = null;

@@ -5,6 +5,9 @@ const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
+// Socket.IO setup - make sure to use your actual backend URL from Render
+const socket = io('https://your-backend-name.onrender.com');
+
 // Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
 scene.add(ambientLight);
@@ -103,19 +106,6 @@ scene.add(car);
 camera.position.set(0, 5, 15);
 camera.lookAt(car.position);
 
-// Socket.io setup
-const express = require('express');
-const app = express();
-const http = require('http').createServer(app);
-const io = require('socket.io')(http, {
-    cors: {
-        origin: "https://your-frontend-name.onrender.com",  // Your Render frontend URL
-        methods: ["GET", "POST"]
-    }
-});
-
-const PORT = process.env.PORT || 3000;
-
 const players = {};
 let localPlayer = null;
 
@@ -166,26 +156,26 @@ window.addEventListener('resize', () => {
 });
 
 // Socket.io event handlers
-io.on('currentPlayers', (serverPlayers) => {
+socket.on('currentPlayers', (serverPlayers) => {
     Object.keys(serverPlayers).forEach((id) => {
-        if (id !== io.id) {
+        if (id !== socket.id) {
             addPlayer(id, serverPlayers[id]);
         }
     });
 });
 
-io.on('newPlayer', (playerInfo) => {
+socket.on('newPlayer', (playerInfo) => {
     addPlayer(playerInfo.id, playerInfo);
 });
 
-io.on('playerMoved', (playerInfo) => {
+socket.on('playerMoved', (playerInfo) => {
     if (players[playerInfo.id]) {
         players[playerInfo.id].position = playerInfo.position;
         players[playerInfo.id].rotation = playerInfo.rotation;
     }
 });
 
-io.on('playerDisconnected', (playerId) => {
+socket.on('playerDisconnected', (playerId) => {
     if (players[playerId]) {
         scene.remove(players[playerId]);
         delete players[playerId];
@@ -398,7 +388,7 @@ function animate() {
             
             // Check collision with other players
             Object.keys(players).forEach(id => {
-                if (id !== io.id) {
+                if (id !== socket.id) {
                     const player = players[id];
                     const dx = bullet.position.x - player.position.x;
                     const dz = bullet.position.z - player.position.z;
@@ -446,7 +436,7 @@ function animate() {
         }
 
         // Emit position to server
-        io.emit('playerMovement', {
+        socket.emit('playerMovement', {
             position: car.position,
             rotation: car.rotation
         });
@@ -484,6 +474,4 @@ function updateHealthBar(health) {
     } else {
         healthFill.style.backgroundColor = '#ff0000'; // Red
     }
-}
-
-const socket = io('https://your-backend-name.onrender.com'); 
+} 

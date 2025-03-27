@@ -148,6 +148,9 @@ const touchStates = {
 window.addEventListener('keydown', (e) => {
     if (keys.hasOwnProperty(e.key)) {
         keys[e.key] = true;
+        if (e.key === ' ') {
+            console.log('Spacebar pressed! 🔫');
+        }
     }
 });
 
@@ -461,6 +464,7 @@ function animate() {
 
         // Handle shooting
         if (shooting) {
+            console.log('Spacebar pressed - Firing! 🔫');
             createBullet(gunLeft);
             createBullet(gunRight);
         }

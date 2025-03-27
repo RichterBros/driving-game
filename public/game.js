@@ -204,9 +204,47 @@ socket.on('playerDisconnected', (playerId) => {
 
 // Helper functions
 function addPlayer(id, playerInfo) {
-    const playerCar = new THREE.Mesh(carGeometry, new THREE.MeshStandardMaterial({ color: 0xff0000 }));
+    // Create car body
+    const playerCarGeometry = new THREE.BoxGeometry(2, 1, 4);
+    const playerCarMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+    const playerCar = new THREE.Mesh(playerCarGeometry, playerCarMaterial);
+    
+    // Create wheels
+    const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
+    const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+
+    // Create and position wheels
+    const wheelFL = new THREE.Mesh(wheelGeometry, wheelMaterial);
+    const wheelFR = new THREE.Mesh(wheelGeometry, wheelMaterial);
+    const wheelBL = new THREE.Mesh(wheelGeometry, wheelMaterial);
+    const wheelBR = new THREE.Mesh(wheelGeometry, wheelMaterial);
+
+    // Position wheels
+    wheelFL.position.set(-1.2, -0.3, 1.2);
+    wheelFR.position.set(1.2, -0.3, 1.2);
+    wheelBL.position.set(-1.2, -0.3, -1.2);
+    wheelBR.position.set(1.2, -0.3, -1.2);
+
+    // Rotate wheels to correct orientation
+    wheelFL.rotation.z = Math.PI / 2;
+    wheelFR.rotation.z = Math.PI / 2;
+    wheelBL.rotation.z = Math.PI / 2;
+    wheelBR.rotation.z = Math.PI / 2;
+
+    // Add wheels to car
+    playerCar.add(wheelFL);
+    playerCar.add(wheelFR);
+    playerCar.add(wheelBL);
+    playerCar.add(wheelBR);
+
+    // Set car position and rotation
     playerCar.position.copy(playerInfo.position);
     playerCar.rotation.y = playerInfo.rotation.y;
+    playerCar.position.y = 0.5; // Lift car off ground
+
+    // Store wheels for animation
+    playerCar.wheels = [wheelFL, wheelFR, wheelBL, wheelBR];
+    
     scene.add(playerCar);
     players[id] = playerCar;
 }
@@ -541,6 +579,17 @@ function animate() {
             },
             rotation: {
                 y: car.rotation.y
+            }
+        });
+
+        // Rotate wheels of other players' cars
+        Object.keys(players).forEach(id => {
+            const player = players[id];
+            if (player && player.wheels) {
+                // Rotate wheels based on player movement
+                player.wheels.forEach(wheel => {
+                    wheel.rotation.x += currentSpeed * 5;
+                });
             }
         });
     }

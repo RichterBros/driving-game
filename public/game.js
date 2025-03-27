@@ -252,6 +252,7 @@ function createBullet(gun) {
     bullet.position.copy(gun.getWorldPosition(new THREE.Vector3()));
     bullet.rotation.copy(car.rotation);
     bullet.ownerId = socket.id; // Add owner ID to bullet
+    bullet.createdAt = Date.now();
     
     scene.add(bullet);
     bullets.push(bullet);
@@ -487,18 +488,40 @@ function animate() {
             bullet.position.x -= Math.sin(bullet.rotation.y) * BULLET_SPEED;
             bullet.position.z -= Math.cos(bullet.rotation.y) * BULLET_SPEED;
             
-            // Check collision with car (local player)
-            const dx = bullet.position.x - car.position.x;
-            const dz = bullet.position.z - car.position.z;
-            const distance = Math.sqrt(dx * dx + dz * dz);
+            // Check collision with other players
+            Object.keys(players).forEach(id => {
+                if (id !== bullet.ownerId) { // Don't hit own car
+                    const player = players[id];
+                    const dx = bullet.position.x - player.position.x;
+                    const dz = bullet.position.z - player.position.z;
+                    const distance = Math.sqrt(dx * dx + dz * dz);
+                    
+                    if (distance < 2) { // Hit detection radius
+                        // Remove bullet
+                        scene.remove(bullet);
+                        bullets.splice(i, 1);
+                        
+                        // Emit hit event
+                        socket.emit('bulletHit', {
+                            hitPlayerId: id,
+                            damage: 1 // 1% damage per hit
+                        });
+                    }
+                }
+            });
+
+            // Check if bullet hit local player
+            const localDx = bullet.position.x - car.position.x;
+            const localDz = bullet.position.z - car.position.z;
+            const localDistance = Math.sqrt(localDx * localDx + localDz * localDz);
             
-            if (distance < 2 && bullet.ownerId !== socket.id) { // Hit detection radius and not own bullet
+            if (localDistance < 2 && bullet.ownerId !== socket.id) { // Hit detection radius and not own bullet
                 // Remove bullet
                 scene.remove(bullet);
                 bullets.splice(i, 1);
                 
                 // Decrease health
-                playerHealth -= BULLET_DAMAGE;
+                playerHealth = Math.max(0, playerHealth - 1); // Prevent negative health
                 updateHealthBar();
                 
                 // Check if player is destroyed

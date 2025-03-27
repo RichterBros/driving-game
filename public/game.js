@@ -280,7 +280,8 @@ let currentSpeed = 0;       // Current speed of the car
 
 // Add at the top with other constants
 const BULLET_DAMAGE = 1; // 1% damage per hit
-const BULLET_HIT_RADIUS = 1.5; // Smaller radius for more precise hits
+const HIT_RADIUS = 1.5; // Smaller radius for more precise hits
+const PARTICLE_COUNT = 8; // Number of particles per hit
 let playerHealth = 100;
 
 // Add at the top with other constants
@@ -295,6 +296,11 @@ let cameraAngleX = 0;
 let cameraAngleY = 0;
 const CAMERA_ROTATION_SPEED = 0.005;
 const CAMERA_DISTANCE = 10;
+
+// Add this at the top of your file with other constants
+const hitSound = new Audio();
+hitSound.src = 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3';
+hitSound.volume = 0.3;
 
 // Add bullet creation function
 function createBullet(gun) {
@@ -539,6 +545,46 @@ document.addEventListener('contextmenu', (e) => {
     e.preventDefault();
 });
 
+// Add hit effect function
+function createHitEffect(position) {
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const particle = new THREE.Mesh(
+            new THREE.SphereGeometry(0.1),
+            new THREE.MeshBasicMaterial({ 
+                color: 0xffff00, // Bright yellow color
+                transparent: true,
+                opacity: 1
+            })
+        );
+        
+        particle.position.copy(position);
+        particle.velocity = new THREE.Vector3(
+            (Math.random() - 0.5) * 0.5,
+            Math.random() * 0.5,
+            (Math.random() - 0.5) * 0.5
+        );
+        
+        scene.add(particle);
+        
+        // Animate particle
+        const animate = () => {
+            particle.position.add(particle.velocity);
+            particle.velocity.y -= 0.01; // Add gravity
+            particle.scale.multiplyScalar(0.95); // Shrink particle
+            particle.material.opacity *= 0.95; // Fade out
+        };
+
+        // Add to animation loop
+        const particleInterval = setInterval(animate, 16);
+        
+        // Remove particle and clear interval after 500ms
+        setTimeout(() => {
+            scene.remove(particle);
+            clearInterval(particleInterval);
+        }, 500);
+    }
+}
+
 // Game loop
 function animate() {
     requestAnimationFrame(animate);
@@ -628,60 +674,36 @@ function animate() {
         wheelBL.rotation.x += wheelRotationSpeed;
         wheelBR.rotation.x += wheelRotationSpeed;
 
-        // Update bullets
+        // Update bullets and check collisions
         for (let i = bullets.length - 1; i >= 0; i--) {
             const bullet = bullets[i];
             
             // Move bullet
             bullet.position.x -= Math.sin(bullet.rotation.y) * BULLET_SPEED;
             bullet.position.z -= Math.cos(bullet.rotation.y) * BULLET_SPEED;
-
-            // Check collision with local player's car
-            if (bullet.ownerId !== socket.id) { // Don't check our own bullets
-                const dx = bullet.position.x - car.position.x;
-                const dy = bullet.position.y - car.position.y;
-                const dz = bullet.position.z - car.position.z;
-                const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-                if (distance < BULLET_HIT_RADIUS) {
-                    console.log('Bullet hit local player!'); // Debug log
-                    
-                    // Remove the bullet
-                    scene.remove(bullet);
-                    bullets.splice(i, 1);
-
-                    // Apply damage
-                    playerHealth = Math.max(0, playerHealth - BULLET_DAMAGE);
-                    updateHealthBar();
-
-                    // Check for death
-                    if (playerHealth <= 0) {
-                        playerDeath();
-                    }
-
-                    // Skip rest of loop for this bullet
-                    continue;
-                }
-            }
-
+            
             // Check collision with other players
             Object.keys(players).forEach(id => {
-                if (id !== socket.id && bullet.ownerId === socket.id) { // Only check our bullets against other players
+                if (id !== socket.id && bullet.ownerId === socket.id) {
                     const player = players[id];
                     const dx = bullet.position.x - player.position.x;
-                    const dy = bullet.position.y - player.position.y;
                     const dz = bullet.position.z - player.position.z;
-                    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                    const distance = Math.sqrt(dx * dx + dz * dz);
 
-                    if (distance < BULLET_HIT_RADIUS) {
-                        console.log('Bullet hit other player!'); // Debug log
+                    if (distance < HIT_RADIUS) {
+                        // Create hit effect
+                        createHitEffect(bullet.position.clone());
                         
-                        // Remove the bullet
+                        // Play hit sound
+                        hitSound.currentTime = 0;
+                        hitSound.play().catch(e => console.log('Sound play failed:', e));
+                        
+                        // Remove bullet
                         scene.remove(bullet);
                         bullets.splice(i, 1);
-
-                        // Emit hit event to server
-                        socket.emit('bulletHit', {
+                        
+                        // Emit hit event
+                        socket.emit('playerHit', {
                             hitPlayerId: id,
                             damage: BULLET_DAMAGE
                         });
@@ -689,10 +711,31 @@ function animate() {
                 }
             });
 
-            // Remove old bullets
-            if (Date.now() - bullet.createdAt > 2000) { // 2 seconds lifetime
-                scene.remove(bullet);
-                bullets.splice(i, 1);
+            // Check if bullet hit local player
+            if (bullet.ownerId !== socket.id) {
+                const localDx = bullet.position.x - car.position.x;
+                const localDz = bullet.position.z - car.position.z;
+                const localDistance = Math.sqrt(localDx * localDx + localDz * localDz);
+                
+                if (localDistance < HIT_RADIUS) {
+                    // Create hit effect
+                    createHitEffect(bullet.position.clone());
+                    
+                    // Play hit sound
+                    hitSound.currentTime = 0;
+                    hitSound.play().catch(e => console.log('Sound play failed:', e));
+                    hitSound.play();
+                    
+                    // Remove bullet and apply damage
+                    scene.remove(bullet);
+                    bullets.splice(i, 1);
+                    playerHealth = Math.max(0, playerHealth - 1);
+                    updateHealthBar();
+                    
+                    if (playerHealth <= 0) {
+                        playerDeath();
+                    }
+                }
             }
         }
 
@@ -849,13 +892,54 @@ function respawnPlayer() {
 
 // Add socket event listeners for damage
 socket.on('playerHit', () => {
-    playerHealth = Math.max(0, playerHealth - BULLET_DAMAGE);
+    // Decrease local player's health when hit
+    playerHealth = Math.max(0, playerHealth - 1);
     updateHealthBar();
     
     if (playerHealth <= 0) {
         playerDeath();
     }
 });
+
+// Add hit effect function
+function createHitEffect(position) {
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const particle = new THREE.Mesh(
+            new THREE.SphereGeometry(0.1),
+            new THREE.MeshBasicMaterial({ 
+                color: 0xffff00, // Bright yellow color
+                transparent: true,
+                opacity: 1
+            })
+        );
+        
+        particle.position.copy(position);
+        particle.velocity = new THREE.Vector3(
+            (Math.random() - 0.5) * 0.5,
+            Math.random() * 0.5,
+            (Math.random() - 0.5) * 0.5
+        );
+        
+        scene.add(particle);
+        
+        // Animate particle
+        const animate = () => {
+            particle.position.add(particle.velocity);
+            particle.velocity.y -= 0.01; // Add gravity
+            particle.scale.multiplyScalar(0.95); // Shrink particle
+            particle.material.opacity *= 0.95; // Fade out
+        };
+
+        // Add to animation loop
+        const particleInterval = setInterval(animate, 16);
+        
+        // Remove particle and clear interval after 500ms
+        setTimeout(() => {
+            scene.remove(particle);
+            clearInterval(particleInterval);
+        }, 500);
+    }
+}
 
 // Add meta viewport tag to your HTML for proper mobile scaling
 // Add this to your index.html <head> section:

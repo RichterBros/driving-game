@@ -157,6 +157,7 @@ window.addEventListener('resize', () => {
 
 // Socket.io event handlers
 socket.on('currentPlayers', (serverPlayers) => {
+    document.getElementById('playerCount').textContent = Object.keys(serverPlayers).length;
     Object.keys(serverPlayers).forEach((id) => {
         if (id !== socket.id) {
             addPlayer(id, serverPlayers[id]);
@@ -166,12 +167,17 @@ socket.on('currentPlayers', (serverPlayers) => {
 
 socket.on('newPlayer', (playerInfo) => {
     addPlayer(playerInfo.id, playerInfo);
+    // Update player count
+    const currentCount = parseInt(document.getElementById('playerCount').textContent);
+    document.getElementById('playerCount').textContent = currentCount + 1;
 });
 
 socket.on('playerMoved', (playerInfo) => {
     if (players[playerInfo.id]) {
-        players[playerInfo.id].position = playerInfo.position;
-        players[playerInfo.id].rotation = playerInfo.rotation;
+        const player = players[playerInfo.id];
+        // Update position and rotation smoothly
+        player.position.set(playerInfo.position.x, playerInfo.position.y, playerInfo.position.z);
+        player.rotation.y = playerInfo.rotation.y;
     }
 });
 
@@ -179,6 +185,9 @@ socket.on('playerDisconnected', (playerId) => {
     if (players[playerId]) {
         scene.remove(players[playerId]);
         delete players[playerId];
+        // Update player count
+        const currentCount = parseInt(document.getElementById('playerCount').textContent);
+        document.getElementById('playerCount').textContent = Math.max(0, currentCount - 1);
     }
 });
 
@@ -435,19 +444,25 @@ function animate() {
             currentSpeed *= -0.5; // Bounce back at half speed
         }
 
-        // Emit position to server
+        // Emit position more frequently and with complete data
         socket.emit('playerMovement', {
-            position: car.position,
-            rotation: car.rotation
+            position: {
+                x: car.position.x,
+                y: car.position.y,
+                z: car.position.z
+            },
+            rotation: {
+                y: car.rotation.y
+            }
         });
     }
 
-    // Update other players
+    // Update other players' positions
     Object.keys(players).forEach((id) => {
         if (players[id]) {
             const player = players[id];
-            player.position.lerp(player.position, 0.1);
-            player.rotation.y = player.rotation.y;
+            // Remove the lerp to fix static position issue
+            // Just ensure the position and rotation are updated from socket events
         }
     });
 

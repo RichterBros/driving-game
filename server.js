@@ -18,7 +18,7 @@ io.on('connection', (socket) => {
 
     // Initialize player
     players[socket.id] = {
-        position: { x: 0, y: 0, z: 0 },
+        position: { x: 0, y: 0.5, z: 0 },
         rotation: { y: 0 }
     };
 

@@ -3,8 +3,9 @@ const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http, {
     cors: {
-        origin: "*",  // In production, replace with your Netlify URL
-        methods: ["GET", "POST"]
+        origin: "https://driving-game-frontend.onrender.com", // Your frontend URL
+        methods: ["GET", "POST"],
+        credentials: true
     }
 });
 

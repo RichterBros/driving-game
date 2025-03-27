@@ -279,19 +279,19 @@ function checkBuildingCollision(carPosition) {
     return null;
 }
 
-// Update the health bar styles
+// Make sure this health bar code appears after your Three.js setup
 const healthDisplay = document.createElement('div');
-healthDisplay.style.position = 'fixed'; // Change to fixed positioning
-healthDisplay.style.bottom = '80px'; // Position above touch controls
-healthDisplay.style.left = '50%'; // Center horizontally
-healthDisplay.style.transform = 'translateX(-50%)'; // Center alignment
-healthDisplay.style.width = '200px';
+healthDisplay.style.position = 'fixed';
+healthDisplay.style.bottom = '120px'; // Increased distance from bottom to be above touch controls
+healthDisplay.style.left = '50%';
+healthDisplay.style.transform = 'translateX(-50%)';
+healthDisplay.style.width = '300px'; // Made it a bit wider
 healthDisplay.style.height = '20px';
 healthDisplay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
 healthDisplay.style.border = '2px solid white';
 healthDisplay.style.borderRadius = '10px';
 healthDisplay.style.overflow = 'hidden';
-healthDisplay.style.zIndex = '1000'; // Make sure it's above other elements
+healthDisplay.style.zIndex = '1000';
 
 const healthFill = document.createElement('div');
 healthFill.style.width = '100%';
@@ -299,6 +299,14 @@ healthFill.style.height = '100%';
 healthFill.style.backgroundColor = '#00ff00';
 healthFill.style.transition = 'width 0.3s, background-color 0.3s';
 
+// Remove any existing health display first
+const existingHealthDisplay = document.querySelector('#healthDisplay');
+if (existingHealthDisplay) {
+    existingHealthDisplay.remove();
+}
+
+// Add ID to new health display
+healthDisplay.id = 'healthDisplay';
 healthDisplay.appendChild(healthFill);
 document.body.appendChild(healthDisplay);
 

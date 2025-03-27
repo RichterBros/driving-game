@@ -109,7 +109,7 @@ const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http, {
     cors: {
-        origin: "*",  // You'll update this with your frontend URL later
+        origin: "https://your-frontend-name.onrender.com",  // Your Render frontend URL
         methods: ["GET", "POST"]
     }
 });
@@ -486,4 +486,4 @@ function updateHealthBar(health) {
     }
 }
 
-const socket = io('https://driving-game-server.onrender.com'); // Replace with your actual backend URL 
+const socket = io('https://your-backend-name.onrender.com'); 

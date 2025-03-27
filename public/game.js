@@ -232,7 +232,8 @@ const DECELERATION = 0.01;  // How quickly the car slows down
 let currentSpeed = 0;       // Current speed of the car
 
 // Add at the top with other constants
-const BULLET_DAMAGE = 5; // 5% damage per hit
+const BULLET_DAMAGE = 1; // 1% damage per hit
+const BULLET_HIT_RADIUS = 2; // Collision detection radius
 let playerHealth = 100;
 
 // Add at the top with other constants
@@ -249,9 +250,10 @@ function createBullet(gun) {
     });
     const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
     
+    // Set bullet position and properties
     bullet.position.copy(gun.getWorldPosition(new THREE.Vector3()));
     bullet.rotation.copy(car.rotation);
-    bullet.ownerId = socket.id; // Add owner ID to bullet
+    bullet.ownerId = socket.id;
     bullet.createdAt = Date.now();
     
     scene.add(bullet);
@@ -479,8 +481,7 @@ function animate() {
         wheelBL.rotation.x += wheelRotationSpeed;
         wheelBR.rotation.x += wheelRotationSpeed;
 
-        // Update bullets and check collisions
-        const currentTime = Date.now();
+        // Update bullets
         for (let i = bullets.length - 1; i >= 0; i--) {
             const bullet = bullets[i];
             
@@ -488,46 +489,33 @@ function animate() {
             bullet.position.x -= Math.sin(bullet.rotation.y) * BULLET_SPEED;
             bullet.position.z -= Math.cos(bullet.rotation.y) * BULLET_SPEED;
             
-            // Check collision with other players
-            Object.keys(players).forEach(id => {
-                if (id !== bullet.ownerId) { // Don't hit own car
-                    const player = players[id];
-                    const dx = bullet.position.x - player.position.x;
-                    const dz = bullet.position.z - player.position.z;
-                    const distance = Math.sqrt(dx * dx + dz * dz);
+            // Check if bullet hit local player's car
+            if (bullet.ownerId !== socket.id) { // Only check bullets from other players
+                const dx = bullet.position.x - car.position.x;
+                const dz = bullet.position.z - car.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+                
+                if (distance < BULLET_HIT_RADIUS) {
+                    // Remove bullet
+                    scene.remove(bullet);
+                    bullets.splice(i, 1);
                     
-                    if (distance < 2) { // Hit detection radius
-                        // Remove bullet
-                        scene.remove(bullet);
-                        bullets.splice(i, 1);
-                        
-                        // Emit hit event
-                        socket.emit('bulletHit', {
-                            hitPlayerId: id,
-                            damage: 1 // 1% damage per hit
-                        });
+                    // Decrease health
+                    playerHealth = Math.max(0, playerHealth - BULLET_DAMAGE);
+                    updateHealthBar();
+                    
+                    if (playerHealth <= 0) {
+                        playerDeath();
                     }
+                    
+                    continue; // Skip rest of loop for this bullet
                 }
-            });
-
-            // Check if bullet hit local player
-            const localDx = bullet.position.x - car.position.x;
-            const localDz = bullet.position.z - car.position.z;
-            const localDistance = Math.sqrt(localDx * localDx + localDz * localDz);
+            }
             
-            if (localDistance < 2 && bullet.ownerId !== socket.id) { // Hit detection radius and not own bullet
-                // Remove bullet
+            // Remove old bullets
+            if (Date.now() - bullet.createdAt > BULLET_LIFETIME) {
                 scene.remove(bullet);
                 bullets.splice(i, 1);
-                
-                // Decrease health
-                playerHealth = Math.max(0, playerHealth - 1); // Prevent negative health
-                updateHealthBar();
-                
-                // Check if player is destroyed
-                if (playerHealth <= 0) {
-                    playerDeath();
-                }
             }
         }
 
@@ -584,11 +572,11 @@ function updateHealthBar() {
     
     // Change color based on health
     if (playerHealth > 60) {
-        healthFill.style.backgroundColor = '#00ff00'; // Green
+        healthFill.style.backgroundColor = '#00ff00';
     } else if (playerHealth > 30) {
-        healthFill.style.backgroundColor = '#ffff00'; // Yellow
+        healthFill.style.backgroundColor = '#ffff00';
     } else {
-        healthFill.style.backgroundColor = '#ff0000'; // Red
+        healthFill.style.backgroundColor = '#ff0000';
     }
 }
 

@@ -835,8 +835,33 @@ function playerDeath() {
     
     // Start respawn timer
     setTimeout(() => {
-        respawnPlayer();
-    }, RESPAWN_DELAY);
+        // Reset player state
+        isPlayerDead = false;
+        playerHealth = 100;
+        updateHealthBar();
+        
+        // Reset position to spawn point
+        car.position.set(trackRadius, 0.5, 0);
+        car.rotation.y = Math.PI / 2;
+        
+        // Reset speed
+        currentSpeed = 0;
+        
+        // Make car visible again
+        car.visible = true;
+        
+        // Emit position update
+        socket.emit('playerMovement', {
+            position: {
+                x: car.position.x,
+                y: car.position.y,
+                z: car.position.z
+            },
+            rotation: {
+                y: car.rotation.y
+            }
+        });
+    }, RESPAWN_DELAY);  // 3 seconds delay before respawn
 }
 
 // Add explosion effect function

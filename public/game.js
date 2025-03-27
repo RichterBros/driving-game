@@ -201,7 +201,7 @@ const BULLET_LIFETIME = 1000;
 const HIT_RADIUS = 3;
 const PARTICLE_COUNT = 10;  // Number of particles for hit effects
 const RESPAWN_DELAY = 3000;  // 3 seconds respawn delay
-const BULLET_DAMAGE = 1;     // Damage per bullet hit (1%)
+const BULLET_DAMAGE = 10;     // Damage per bullet hit (10%)
 const BULLET_COOLDOWN = 250; // 250ms cooldown between shots (2x faster than before)
 let lastShotTime = 0; // Track the last time a shot was fired
 
@@ -694,7 +694,8 @@ function animate() {
                                 // Emit hit event with damage
                                 socket.emit('playerHit', {
                                     hitPlayerId: id,
-                                    damage: BULLET_DAMAGE
+                                    shooterId: socket.id,
+                                    damage: BULLET_DAMAGE  // Use constant 10% damage
                                 });
                             }
                         }
@@ -722,7 +723,8 @@ function animate() {
                             // Emit hit event to server
                             socket.emit('playerHit', {
                                 hitPlayerId: socket.id,
-                                damage: BULLET_DAMAGE
+                                shooterId: socket.id,
+                                damage: BULLET_DAMAGE  // Use constant 10% damage
                             });
                             
                             if (playerHealth <= 0) {
@@ -791,10 +793,12 @@ renderer.setClearColor(0x87ceeb); // Light blue sky color
 
 // Update the socket event listener for damage
 socket.on('playerHit', (data) => {
-    console.log('Received hit event, current health:', playerHealth);
+    console.log('Received hit event:', data);
+    
+    // Only apply damage if this client is the one that got hit
     if (data.hitPlayerId === socket.id) {
-        playerHealth = Math.max(0, playerHealth - data.damage);
-        console.log('Health after hit:', playerHealth);
+        playerHealth = Math.max(0, playerHealth - BULLET_DAMAGE);
+        console.log('I was hit! Health:', playerHealth);
         updateHealthBar();
         
         if (playerHealth <= 0) {
@@ -887,7 +891,7 @@ function createExplosion(position) {
 function respawnPlayer() {
     isPlayerDead = false;
     
-    // Reset health
+    // Reset health and damage
     playerHealth = 100;
     updateHealthBar();
     

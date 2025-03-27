@@ -330,13 +330,20 @@ function createExplosion(position) {
     return particles;
 }
 
-// Add touch controls to the HTML first
+// Update the touch controls container style
 const touchControls = document.createElement('div');
 touchControls.style.position = 'fixed';
 touchControls.style.bottom = '20px';
-touchControls.style.left = '50%';
-touchControls.style.transform = 'translateX(-50%)';
+touchControls.style.left = '0';
+touchControls.style.right = '0';
 touchControls.style.display = 'none'; // Hide by default, show only on touch devices
+touchControls.style.display = 'flex'; // Use flex to align items
+touchControls.style.justifyContent = 'space-between'; // Space between movement and shoot controls
+touchControls.style.padding = '0 20px'; // Add padding on sides
+
+// Create a container for movement buttons
+const moveControls = document.createElement('div');
+moveControls.style.display = 'inline-block';
 
 // Create touch buttons
 const buttonStyle = `
@@ -366,12 +373,23 @@ function createButton(text) {
     const button = document.createElement('div');
     button.style.cssText = buttonStyle;
     button.innerText = text;
-    touchControls.appendChild(button);
+    moveControls.appendChild(button);
     return button;
 }
 
-// Add buttons to the page
-document.body.appendChild(touchControls);
+// Add containers to main touch controls
+touchControls.appendChild(moveControls);
+
+// Update shoot button style
+const shootButton = createButton('🔫');
+shootButton.style.backgroundColor = 'rgba(255, 0, 0, 0.3)';
+shootButton.style.width = '80px'; // Make it slightly larger
+shootButton.style.height = '80px';
+shootButton.style.lineHeight = '80px';
+shootButton.style.fontSize = '32px';
+
+// Add containers to main touch controls
+touchControls.appendChild(shootButton);
 
 // Show controls only on touch devices
 if ('ontouchstart' in window) {
@@ -410,13 +428,6 @@ buttons.right.addEventListener('touchstart', (e) => {
     touchStates.ArrowRight = true;
 });
 buttons.right.addEventListener('touchend', () => touchStates.ArrowRight = false);
-
-// Add to the existing touch controls setup
-const shootButton = createButton('🔫'); // Using an emoji for the shoot button
-shootButton.style.backgroundColor = 'rgba(255, 0, 0, 0.3)'; // Reddish background
-shootButton.style.position = 'fixed';
-shootButton.style.right = '20px'; // Position on right side
-shootButton.style.bottom = '20px';
 
 // Add shooting state
 touchStates[' '] = false; // Space key state for shooting

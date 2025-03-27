@@ -113,9 +113,6 @@ let localPlayer = null;
 const bullets = [];
 const BULLET_SPEED = 2;
 const BULLET_LIFETIME = 1000; // milliseconds
-const BULLET_DAMAGE = 1; // 1% damage per hit
-let playerHealth = 100;
-const COLLISION_RADIUS = 3; // Increased collision radius for easier hits
 
 // Add gun models to the car
 const gunGeometry = new THREE.BoxGeometry(0.1, 0.1, 0.5);
@@ -204,7 +201,7 @@ socket.on('playerDisconnected', (playerId) => {
 
 // Helper functions
 function addPlayer(id, playerInfo) {
-    const playerCar = createCarWithWheels(0xff0000); // Red for other players
+    const playerCar = new THREE.Mesh(carGeometry, new THREE.MeshStandardMaterial({ color: 0xff0000 }));
     playerCar.position.copy(playerInfo.position);
     playerCar.rotation.y = playerInfo.rotation.y;
     scene.add(playerCar);
@@ -234,12 +231,16 @@ const DECELERATION = 0.01;  // How quickly the car slows down
 let currentSpeed = 0;       // Current speed of the car
 
 // Add at the top with other constants
+const BULLET_DAMAGE = 5; // 5% damage per hit
+let playerHealth = 100;
+
+// Add at the top with other constants
 const RESPAWN_DELAY = 5000; // 5 seconds in milliseconds
 let isPlayerDead = false;
 
 // Add bullet creation function
 function createBullet(gun) {
-    const bulletGeometry = new THREE.SphereGeometry(0.2);
+    const bulletGeometry = new THREE.SphereGeometry(0.1);
     const bulletMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xff0000,
         emissive: 0xff0000,
@@ -249,8 +250,7 @@ function createBullet(gun) {
     
     bullet.position.copy(gun.getWorldPosition(new THREE.Vector3()));
     bullet.rotation.copy(car.rotation);
-    bullet.ownerId = socket.id;
-    bullet.createdAt = Date.now();
+    bullet.ownerId = socket.id; // Add owner ID to bullet
     
     scene.add(bullet);
     bullets.push(bullet);
@@ -477,7 +477,8 @@ function animate() {
         wheelBL.rotation.x += wheelRotationSpeed;
         wheelBR.rotation.x += wheelRotationSpeed;
 
-        // Update bullets
+        // Update bullets and check collisions
+        const currentTime = Date.now();
         for (let i = bullets.length - 1; i >= 0; i--) {
             const bullet = bullets[i];
             
@@ -485,25 +486,22 @@ function animate() {
             bullet.position.x -= Math.sin(bullet.rotation.y) * BULLET_SPEED;
             bullet.position.z -= Math.cos(bullet.rotation.y) * BULLET_SPEED;
             
-            // Check collision with local player's car
+            // Check collision with car (local player)
             const dx = bullet.position.x - car.position.x;
             const dz = bullet.position.z - car.position.z;
             const distance = Math.sqrt(dx * dx + dz * dz);
             
-            // Only take damage if hit by OTHER players' bullets
-            if (distance < 2 && bullet.ownerId !== socket.id) {
-                console.log('Local player hit! Health: ' + playerHealth);
-                
+            if (distance < 2 && bullet.ownerId !== socket.id) { // Hit detection radius and not own bullet
                 // Remove bullet
                 scene.remove(bullet);
                 bullets.splice(i, 1);
                 
-                // Local player takes damage
+                // Decrease health
                 playerHealth -= BULLET_DAMAGE;
                 updateHealthBar();
                 
-                // Check for death
-                if (playerHealth <= 0 && !isPlayerDead) {
+                // Check if player is destroyed
+                if (playerHealth <= 0) {
                     playerDeath();
                 }
             }
@@ -535,17 +533,6 @@ function animate() {
                 y: car.rotation.y
             }
         });
-
-        // Rotate wheels of other players' cars
-        Object.keys(players).forEach(id => {
-            const player = players[id];
-            if (player && player.wheels) {
-                // Rotate wheels based on player movement
-                player.wheels.forEach(wheel => {
-                    wheel.rotation.x += currentSpeed * 5;
-                });
-            }
-        });
     }
 
     // Update other players' positions
@@ -571,6 +558,7 @@ renderer.setClearColor(0x87ceeb); // Light blue sky color
 function updateHealthBar() {
     healthFill.style.width = `${playerHealth}%`;
     
+    // Change color based on health
     if (playerHealth > 60) {
         healthFill.style.backgroundColor = '#00ff00'; // Green
     } else if (playerHealth > 30) {
@@ -583,12 +571,17 @@ function updateHealthBar() {
 // Update the player death function
 function playerDeath() {
     isPlayerDead = true;
+    
+    // Create explosion effect
     createExplosion(car.position.clone());
+    
+    // Hide the car
     car.visible = false;
     
+    // Start respawn timer
     setTimeout(() => {
         respawnPlayer();
-    }, 5000); // 5 second respawn delay
+    }, RESPAWN_DELAY);
 }
 
 // Add explosion effect function
@@ -641,13 +634,28 @@ function createExplosion(position) {
 
 // Add respawn function
 function respawnPlayer() {
+    // Reset health
     playerHealth = 100;
     updateHealthBar();
+    
+    // Reset position
     car.position.set(0, 0.5, 0);
     car.rotation.y = 0;
-    car.visible = true;
-    isPlayerDead = false;
+    
+    // Reset speed
     currentSpeed = 0;
+    
+    // Make car visible again
+    car.visible = true;
+    
+    // Reset dead state
+    isPlayerDead = false;
+    
+    // Emit position update
+    socket.emit('playerMovement', {
+        position: car.position,
+        rotation: car.rotation
+    });
 }
 
 // Add socket event listeners for damage
@@ -667,68 +675,3 @@ socket.on('playerHit', () => {
 // Add meta viewport tag to your HTML for proper mobile scaling
 // Add this to your index.html <head> section:
 // <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"> 
-
-// Function to create a car with wheels (used for both local and remote players)
-function createCarWithWheels(color) {
-    // Create car group
-    const carGroup = new THREE.Group();
-
-    // Car body
-    const carGeometry = new THREE.BoxGeometry(2, 1, 4);
-    const carMaterial = new THREE.MeshStandardMaterial({ color: color });
-    const carBody = new THREE.Mesh(carGeometry, carMaterial);
-    carBody.position.y = 0.5;
-    carGroup.add(carBody);
-
-    // Wheels
-    const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
-    const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
-
-    // Create wheels
-    const wheelPositions = [
-        [-1.2, -0.3, 1.2],  // Front Left
-        [1.2, -0.3, 1.2],   // Front Right
-        [-1.2, -0.3, -1.2], // Back Left
-        [1.2, -0.3, -1.2]   // Back Right
-    ];
-
-    const wheels = wheelPositions.map(pos => {
-        const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-        wheel.position.set(pos[0], pos[1], pos[2]);
-        wheel.rotation.z = Math.PI / 2;
-        carGroup.add(wheel);
-        return wheel;
-    });
-
-    carGroup.wheels = wheels;
-    return carGroup;
-}
-
-// Create local player's car
-const car = createCarWithWheels(0x00ff00); // Green for local player
-scene.add(car);
-
-// Update the animate function to rotate all wheels
-function animate() {
-    requestAnimationFrame(animate);
-
-    if (localPlayer && !isPlayerDead) {
-        // Rotate local player's wheels
-        if (car.wheels) {
-            car.wheels.forEach(wheel => {
-                wheel.rotation.x += currentSpeed * 5;
-            });
-        }
-
-        // Rotate other players' wheels
-        Object.values(players).forEach(playerCar => {
-            if (playerCar.wheels) {
-                playerCar.wheels.forEach(wheel => {
-                    wheel.rotation.x += currentSpeed * 5;
-                });
-            }
-        });
-
-        // ... rest of your animate function ...
-    }
-} 

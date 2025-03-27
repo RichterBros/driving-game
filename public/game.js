@@ -135,6 +135,15 @@ const keys = {
     ' ': false  // Space bar
 };
 
+// Add with other control variables
+const touchStates = {
+    ArrowUp: false,
+    ArrowDown: false,
+    ArrowLeft: false,
+    ArrowRight: false,
+    ' ': false  // Space key for shooting
+};
+
 // Event listeners for controls
 window.addEventListener('keydown', (e) => {
     if (keys.hasOwnProperty(e.key)) {
@@ -307,6 +316,7 @@ function animate() {
         const down = keys.ArrowDown || touchStates.ArrowDown;
         const left = keys.ArrowLeft || touchStates.ArrowLeft;
         const right = keys.ArrowRight || touchStates.ArrowRight;
+        const shooting = keys[' '] || touchStates[' '];
 
         // Use combined inputs for movement
         if (up) {
@@ -330,7 +340,7 @@ function animate() {
         if (right) car.rotation.y -= rotationSpeed * (Math.abs(currentSpeed) / MAX_SPEED);
 
         // Handle shooting
-        if (keys[' '] || touchStates[' ']) {
+        if (shooting) {
             createBullet(gunLeft);
             createBullet(gunRight);
         }

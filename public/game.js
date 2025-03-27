@@ -551,6 +551,47 @@ function addPlayer(id, playerInfo) {
     players[id] = otherCar;
 }
 
+// Add these constants with your other constants
+const SKID_MARK_LIFETIME = 5000; // How long skid marks last (5 seconds)
+const SKID_MARK_OPACITY = 0.5;   // Initial opacity of skid marks
+const skidMarks = [];            // Array to store skid marks
+
+// Add this function to create skid marks
+function createSkidMark(position, rotation) {
+    const skidMarkGeometry = new THREE.PlaneGeometry(0.3, 0.8);
+    const skidMarkMaterial = new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: SKID_MARK_OPACITY,
+        depthWrite: false,
+        side: THREE.DoubleSide  // Make the skid mark visible from both sides
+    });
+    
+    const skidMark = new THREE.Mesh(skidMarkGeometry, skidMarkMaterial);
+    
+    // Correct rotation to lay flat on the ground
+    skidMark.rotation.x = -Math.PI / 2;  // Rotate 90 degrees to lay flat
+    skidMark.rotation.z = rotation;      // Align with car's direction
+    
+    // Position slightly above ground to prevent z-fighting
+    skidMark.position.copy(position);
+    skidMark.position.y = 0.01;
+    
+    skidMark.createdAt = Date.now();
+    
+    scene.add(skidMark);
+    skidMarks.push(skidMark);
+    
+    // Remove old skid marks
+    setTimeout(() => {
+        scene.remove(skidMark);
+        const index = skidMarks.indexOf(skidMark);
+        if (index > -1) {
+            skidMarks.splice(index, 1);
+        }
+    }, SKID_MARK_LIFETIME);
+}
+
 // Game loop
 function animate() {
     if (!isPlayerDead) {  // Only animate if player is alive
@@ -625,8 +666,42 @@ function animate() {
                 }
 
                 // Handle turning
-                if (left) car.rotation.y += rotationSpeed;
-                if (right) car.rotation.y -= rotationSpeed;
+                if (left) {
+                    car.rotation.y += rotationSpeed;
+                    // Add skid marks if moving fast enough
+                    if (Math.abs(currentSpeed) > maxSpeed * 0.3) {
+                        const wheelPositions = [
+                            new THREE.Vector3(-1.2, 0, 1.2),
+                            new THREE.Vector3(1.2, 0, 1.2),
+                            new THREE.Vector3(-1.2, 0, -1.2),
+                            new THREE.Vector3(1.2, 0, -1.2)
+                        ];
+                        
+                        wheelPositions.forEach(wheelPos => {
+                            const worldPos = wheelPos.clone();
+                            worldPos.applyMatrix4(car.matrixWorld);
+                            createSkidMark(worldPos, car.rotation.y);
+                        });
+                    }
+                }
+                if (right) {
+                    car.rotation.y -= rotationSpeed;
+                    // Add skid marks if moving fast enough
+                    if (Math.abs(currentSpeed) > maxSpeed * 0.3) {
+                        const wheelPositions = [
+                            new THREE.Vector3(-1.2, 0, 1.2),
+                            new THREE.Vector3(1.2, 0, 1.2),
+                            new THREE.Vector3(-1.2, 0, -1.2),
+                            new THREE.Vector3(1.2, 0, -1.2)
+                        ];
+                        
+                        wheelPositions.forEach(wheelPos => {
+                            const worldPos = wheelPos.clone();
+                            worldPos.applyMatrix4(car.matrixWorld);
+                            createSkidMark(worldPos, car.rotation.y);
+                        });
+                    }
+                }
 
                 // Handle shooting separately
                 if (shooting) {
@@ -775,6 +850,13 @@ function animate() {
                     // Remove the lerp to fix static position issue
                     // Just ensure the position and rotation are updated from socket events
                 }
+            });
+
+            // Update skid mark opacity
+            skidMarks.forEach(skidMark => {
+                const age = Date.now() - skidMark.createdAt;
+                const opacity = SKID_MARK_OPACITY * (1 - (age / SKID_MARK_LIFETIME));
+                skidMark.material.opacity = opacity;
             });
 
             renderer.render(scene, camera);

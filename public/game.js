@@ -330,22 +330,15 @@ function createExplosion(position) {
     return particles;
 }
 
-// Update the touch controls container style
+// Create touch controls container
 const touchControls = document.createElement('div');
 touchControls.style.position = 'fixed';
 touchControls.style.bottom = '20px';
 touchControls.style.left = '20px';
-touchControls.style.right = '20px';
-touchControls.style.display = 'none';
-touchControls.style.display = 'flex';
-touchControls.style.justifyContent = 'space-between';
+touchControls.style.width = '100%';
+touchControls.style.display = 'none'; // Initially hidden
 
-// Create a container for movement buttons with specific width
-const moveControls = document.createElement('div');
-moveControls.style.display = 'inline-block';
-moveControls.style.width = '200px';
-
-// Create touch buttons
+// Create button style
 const buttonStyle = `
     width: 60px;
     height: 60px;
@@ -362,6 +355,14 @@ const buttonStyle = `
     -webkit-user-select: none;
 `;
 
+// Create movement buttons container
+const moveControls = document.createElement('div');
+moveControls.style.display = 'inline-block';
+moveControls.style.position = 'absolute';
+moveControls.style.left = '20px';
+moveControls.style.bottom = '20px';
+
+// Create buttons
 const buttons = {
     up: createButton('↑'),
     down: createButton('↓'),
@@ -369,32 +370,38 @@ const buttons = {
     right: createButton('→')
 };
 
-function createButton(text) {
-    const button = document.createElement('div');
-    button.style.cssText = buttonStyle;
-    button.innerText = text;
+// Add buttons to moveControls
+Object.values(buttons).forEach(button => {
     moveControls.appendChild(button);
-    return button;
-}
+});
 
-// Add containers to main touch controls
-touchControls.appendChild(moveControls);
-
-// Update shoot button style
+// Create and style shoot button
 const shootButton = createButton('🔫');
 shootButton.style.backgroundColor = 'rgba(255, 0, 0, 0.3)';
 shootButton.style.width = '80px';
 shootButton.style.height = '80px';
 shootButton.style.lineHeight = '80px';
 shootButton.style.fontSize = '32px';
-shootButton.style.marginLeft = '300px';
+shootButton.style.position = 'absolute';
+shootButton.style.right = '40px';
+shootButton.style.bottom = '20px';
 
-// Add containers to main touch controls
+// Add everything to the page
+document.body.appendChild(touchControls);
+touchControls.appendChild(moveControls);
 touchControls.appendChild(shootButton);
 
 // Show controls only on touch devices
 if ('ontouchstart' in window) {
     touchControls.style.display = 'block';
+}
+
+// Helper function to create buttons
+function createButton(text) {
+    const button = document.createElement('div');
+    button.style.cssText = buttonStyle;
+    button.innerText = text;
+    return button;
 }
 
 // Track touch states

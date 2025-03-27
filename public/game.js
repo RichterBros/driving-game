@@ -287,6 +287,15 @@ let playerHealth = 100;
 const RESPAWN_DELAY = 5000; // 5 seconds in milliseconds
 let isPlayerDead = false;
 
+// Add these variables at the top with your other constants
+let isRightMouseDown = false;
+let previousMouseX = 0;
+let previousMouseY = 0;
+let cameraAngleX = 0;
+let cameraAngleY = 0;
+const CAMERA_ROTATION_SPEED = 0.005;
+const CAMERA_DISTANCE = 10;
+
 // Add bullet creation function
 function createBullet(gun) {
     console.log('Creating bullet!');
@@ -491,6 +500,45 @@ shootButton.addEventListener('touchstart', (e) => {
 });
 shootButton.addEventListener('touchend', () => touchStates[' '] = false);
 
+// Update mouse down event listener
+document.addEventListener('mousedown', (e) => {
+    if (e.button === 2) { // Right mouse button
+        isRightMouseDown = true;
+        previousMouseX = e.clientX;
+        previousMouseY = e.clientY;
+        
+        // Calculate initial camera angles based on current camera position
+        const relativePos = camera.position.clone().sub(car.position);
+        cameraAngleY = Math.atan2(relativePos.x, relativePos.z);
+        cameraAngleX = Math.asin(relativePos.y / CAMERA_DISTANCE);
+    }
+});
+
+// Rest of the mouse event listeners remain the same
+document.addEventListener('mouseup', (e) => {
+    if (e.button === 2) {
+        isRightMouseDown = false;
+    }
+});
+
+document.addEventListener('mousemove', (e) => {
+    if (isRightMouseDown) {
+        const deltaX = e.clientX - previousMouseX;
+        const deltaY = e.clientY - previousMouseY;
+        
+        cameraAngleY += deltaX * CAMERA_ROTATION_SPEED;
+        cameraAngleX = Math.max(-Math.PI/3, Math.min(Math.PI/3, cameraAngleX + deltaY * CAMERA_ROTATION_SPEED));
+        
+        previousMouseX = e.clientX;
+        previousMouseY = e.clientY;
+    }
+});
+
+// Prevent context menu from appearing on right click
+document.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+});
+
 // Game loop
 function animate() {
     requestAnimationFrame(animate);
@@ -552,14 +600,25 @@ function animate() {
         }
 
         // Update camera position
-        const cameraOffset = new THREE.Vector3(0, 3, 8);
-        const cameraPosition = car.position.clone();
-        const rotationMatrix = new THREE.Matrix4();
-        rotationMatrix.makeRotationY(car.rotation.y);
-        cameraOffset.applyMatrix4(rotationMatrix);
-        cameraPosition.add(cameraOffset);
+        if (!isRightMouseDown) {
+            // Normal following camera
+            const cameraOffset = new THREE.Vector3(0, 5, 10);
+            const cameraPosition = car.position.clone();
+            const rotationMatrix = new THREE.Matrix4();
+            rotationMatrix.makeRotationY(car.rotation.y);
+            cameraOffset.applyMatrix4(rotationMatrix);
+            cameraPosition.add(cameraOffset);
+            camera.position.lerp(cameraPosition, 0.1);
+        } else {
+            // Free rotating camera
+            const cameraOffset = new THREE.Vector3(
+                Math.sin(cameraAngleY) * CAMERA_DISTANCE * Math.cos(cameraAngleX),
+                Math.sin(cameraAngleX) * CAMERA_DISTANCE,
+                Math.cos(cameraAngleY) * CAMERA_DISTANCE * Math.cos(cameraAngleX)
+            );
+            camera.position.copy(car.position).add(cameraOffset);
+        }
         
-        camera.position.lerp(cameraPosition, 0.1);
         camera.lookAt(car.position);
 
         // Rotate wheels based on speed

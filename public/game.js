@@ -222,6 +222,10 @@ const ACCELERATION = 0.005;  // How quickly the car speeds up
 const DECELERATION = 0.01;  // How quickly the car slows down
 let currentSpeed = 0;       // Current speed of the car
 
+// Add at the top with other constants
+const BULLET_DAMAGE = 5; // 5% damage per hit
+let playerHealth = 100;
+
 // Add bullet creation function
 function createBullet(gun) {
     const bulletGeometry = new THREE.SphereGeometry(0.1);
@@ -232,12 +236,9 @@ function createBullet(gun) {
     });
     const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
     
-    // Position bullet at gun position
     bullet.position.copy(gun.getWorldPosition(new THREE.Vector3()));
     bullet.rotation.copy(car.rotation);
-    
-    // Add creation time for lifetime tracking
-    bullet.createdAt = Date.now();
+    bullet.ownerId = socket.id; // Add owner ID to bullet
     
     scene.add(bullet);
     bullets.push(bullet);
@@ -266,192 +267,26 @@ function checkBuildingCollision(carPosition) {
     return null;
 }
 
-// Add damage system variables
-const BULLET_DAMAGE = 10; // Damage per bullet hit
-
 // Add health display to HTML
 const healthDisplay = document.createElement('div');
 healthDisplay.style.position = 'absolute';
-healthDisplay.style.bottom = '20px';
+healthDisplay.style.top = '20px';
 healthDisplay.style.left = '20px';
-healthDisplay.style.padding = '10px';
+healthDisplay.style.width = '200px';
+healthDisplay.style.height = '20px';
 healthDisplay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-healthDisplay.style.color = 'white';
-healthDisplay.style.borderRadius = '5px';
-healthDisplay.style.fontFamily = 'Arial';
-document.body.appendChild(healthDisplay);
-
-// Add health bar
-const healthBar = document.createElement('div');
-healthBar.style.width = '200px';
-healthBar.style.height = '20px';
-healthBar.style.border = '2px solid white';
-healthBar.style.borderRadius = '10px';
-healthBar.style.overflow = 'hidden';
-healthDisplay.appendChild(healthBar);
+healthDisplay.style.border = '2px solid white';
+healthDisplay.style.borderRadius = '10px';
+healthDisplay.style.overflow = 'hidden';
 
 const healthFill = document.createElement('div');
 healthFill.style.width = '100%';
 healthFill.style.height = '100%';
 healthFill.style.backgroundColor = '#00ff00';
 healthFill.style.transition = 'width 0.3s, background-color 0.3s';
-healthBar.appendChild(healthFill);
 
-// Add explosion effect function
-function createExplosion(position) {
-    const particleCount = 30;
-    const particles = [];
-    
-    for (let i = 0; i < particleCount; i++) {
-        const geometry = new THREE.SphereGeometry(0.3);
-        const material = new THREE.MeshBasicMaterial({
-            color: Math.random() < 0.5 ? 0xff4500 : 0xff8c00
-        });
-        const particle = new THREE.Mesh(geometry, material);
-        
-        particle.position.copy(position);
-        particle.velocity = new THREE.Vector3(
-            (Math.random() - 0.5) * 2,
-            Math.random() * 2,
-            (Math.random() - 0.5) * 2
-        );
-        
-        scene.add(particle);
-        particles.push(particle);
-        
-        // Remove particle after 1 second
-        setTimeout(() => {
-            scene.remove(particle);
-            const index = particles.indexOf(particle);
-            if (index > -1) particles.splice(index, 1);
-        }, 1000);
-    }
-    
-    return particles;
-}
-
-// Create touch controls container
-const touchControls = document.createElement('div');
-touchControls.style.position = 'fixed';
-touchControls.style.bottom = '20px';
-touchControls.style.left = '20px';
-touchControls.style.width = '100%';
-touchControls.style.display = 'none'; // Initially hidden
-
-// Create button style
-const buttonStyle = `
-    width: 60px;
-    height: 60px;
-    background: rgba(255, 255, 255, 0.3);
-    border: 2px solid white;
-    border-radius: 50%;
-    margin: 10px;
-    display: inline-block;
-    color: white;
-    font-size: 24px;
-    line-height: 60px;
-    text-align: center;
-    user-select: none;
-    -webkit-user-select: none;
-`;
-
-// Create movement buttons container
-const moveControls = document.createElement('div');
-moveControls.style.display = 'inline-block';
-moveControls.style.position = 'absolute';
-moveControls.style.left = '20px';
-moveControls.style.bottom = '20px';
-
-// Create buttons
-const buttons = {
-    up: createButton('↑'),
-    down: createButton('↓'),
-    left: createButton('←'),
-    right: createButton('→')
-};
-
-// Add buttons to moveControls
-Object.values(buttons).forEach(button => {
-    moveControls.appendChild(button);
-});
-
-// Create and style shoot button
-const shootButton = createButton('🔫');
-shootButton.style.backgroundColor = 'rgba(255, 0, 0, 0.3)';
-shootButton.style.width = '80px';
-shootButton.style.height = '80px';
-shootButton.style.lineHeight = '80px';
-shootButton.style.fontSize = '32px';
-shootButton.style.position = 'absolute';
-shootButton.style.right = '40px';
-shootButton.style.bottom = '20px';
-
-// Add everything to the page
-document.body.appendChild(touchControls);
-touchControls.appendChild(moveControls);
-touchControls.appendChild(shootButton);
-
-// Show controls only on touch devices
-if ('ontouchstart' in window) {
-    touchControls.style.display = 'block';
-}
-
-// Helper function to create buttons
-function createButton(text) {
-    const button = document.createElement('div');
-    button.style.cssText = buttonStyle;
-    button.innerText = text;
-    return button;
-}
-
-// Track touch states
-const touchStates = {
-    ArrowUp: false,
-    ArrowDown: false,
-    ArrowLeft: false,
-    ArrowRight: false
-};
-
-// Add touch event listeners
-buttons.up.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    touchStates.ArrowUp = true;
-});
-buttons.up.addEventListener('touchend', () => touchStates.ArrowUp = false);
-
-buttons.down.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    touchStates.ArrowDown = true;
-});
-buttons.down.addEventListener('touchend', () => touchStates.ArrowDown = false);
-
-buttons.left.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    touchStates.ArrowLeft = true;
-});
-buttons.left.addEventListener('touchend', () => touchStates.ArrowLeft = false);
-
-buttons.right.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    touchStates.ArrowRight = true;
-});
-buttons.right.addEventListener('touchend', () => touchStates.ArrowRight = false);
-
-// Add shooting state
-touchStates[' '] = false; // Space key state for shooting
-
-// Add touch listeners for shoot button
-shootButton.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    touchStates[' '] = true;
-});
-
-shootButton.addEventListener('touchend', () => {
-    touchStates[' '] = false;
-});
-
-// Add health variables at the top
-let playerHealth = 100;
+healthDisplay.appendChild(healthFill);
+document.body.appendChild(healthDisplay);
 
 // Game loop
 function animate() {
@@ -523,29 +358,24 @@ function animate() {
             bullet.position.x -= Math.sin(bullet.rotation.y) * BULLET_SPEED;
             bullet.position.z -= Math.cos(bullet.rotation.y) * BULLET_SPEED;
             
-            // Check collision with other players
-            Object.keys(players).forEach(id => {
-                if (id !== socket.id) { // Don't check collision with own bullets
-                    const player = players[id];
-                    const dx = bullet.position.x - player.position.x;
-                    const dz = bullet.position.z - player.position.z;
-                    const distance = Math.sqrt(dx * dx + dz * dz);
-                    
-                    if (distance < 2) { // Hit detection radius
-                        // Remove bullet
-                        scene.remove(bullet);
-                        bullets.splice(i, 1);
-                        
-                        // Emit hit event
-                        socket.emit('bulletHit', id);
-                    }
-                }
-            });
+            // Check collision with car (local player)
+            const dx = bullet.position.x - car.position.x;
+            const dz = bullet.position.z - car.position.z;
+            const distance = Math.sqrt(dx * dx + dz * dz);
             
-            // Remove old bullets
-            if (currentTime - bullet.createdAt > BULLET_LIFETIME) {
+            if (distance < 2 && bullet.ownerId !== socket.id) { // Hit detection radius and not own bullet
+                // Remove bullet
                 scene.remove(bullet);
                 bullets.splice(i, 1);
+                
+                // Decrease health
+                playerHealth -= BULLET_DAMAGE;
+                updateHealthBar();
+                
+                // Check if player is destroyed
+                if (playerHealth <= 0) {
+                    playerDeath();
+                }
             }
         }
 
@@ -597,23 +427,43 @@ animate();
 renderer.setClearColor(0x87ceeb); // Light blue sky color 
 
 // Add health bar update function
-function updateHealthBar(health) {
-    healthFill.style.width = `${health}%`;
+function updateHealthBar() {
+    healthFill.style.width = `${playerHealth}%`;
     
     // Change color based on health
-    if (health > 60) {
+    if (playerHealth > 60) {
         healthFill.style.backgroundColor = '#00ff00'; // Green
-    } else if (health > 30) {
+    } else if (playerHealth > 30) {
         healthFill.style.backgroundColor = '#ffff00'; // Yellow
     } else {
         healthFill.style.backgroundColor = '#ff0000'; // Red
     }
 }
 
+// Add player death function
+function playerDeath() {
+    // Reset health
+    playerHealth = 100;
+    updateHealthBar();
+    
+    // Reset position
+    car.position.set(0, 0.5, 0);
+    car.rotation.y = 0;
+    
+    // Reset speed
+    currentSpeed = 0;
+    
+    // Emit position update
+    socket.emit('playerMovement', {
+        position: car.position,
+        rotation: car.rotation
+    });
+}
+
 // Add socket event listeners for damage
 socket.on('playerHit', () => {
     playerHealth -= 10; // Decrease health by 10
-    updateHealthBar(playerHealth);
+    updateHealthBar();
     
     if (playerHealth <= 0) {
         // Player is destroyed

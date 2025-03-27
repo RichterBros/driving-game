@@ -5,8 +5,8 @@ const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Socket.IO setup - make sure to use your actual backend URL from Render
-const socket = io('https://your-backend-name.onrender.com');
+// Socket.IO setup - make sure this URL matches your Render backend service
+const socket = io('https://driving-game-server.onrender.com');
 
 // Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);

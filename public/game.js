@@ -1132,7 +1132,7 @@ function updateScores() {
     let scoreText = 'Scores:<br>';
     Object.keys(scores).forEach(id => {
         const isYou = id === socket.id ? ' (You)' : '';
-        scoreText += `Player ${id}${isYou}: ${scores[id]}<br>`;
+        scoreText += `Player${isYou}: ${scores[id]}<br>`;  // Removed the ID string
     });
     scoreDisplay.innerHTML = scoreText;
 }

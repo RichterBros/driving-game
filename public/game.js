@@ -126,22 +126,21 @@ gunRight.position.set(0.8, 0, 2.2);
 car.add(gunLeft);
 car.add(gunRight);
 
-// Add to the controls section
+// Add these control state objects near the top of your file
 const keys = {
     ArrowUp: false,
     ArrowDown: false,
     ArrowLeft: false,
     ArrowRight: false,
-    ' ': false  // Space bar
+    ' ': false
 };
 
-// Add with other control variables
 const touchStates = {
     ArrowUp: false,
     ArrowDown: false,
     ArrowLeft: false,
     ArrowRight: false,
-    ' ': false  // Space key for shooting
+    ' ': false
 };
 
 // Event listeners for controls

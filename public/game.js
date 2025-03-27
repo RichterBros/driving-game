@@ -239,7 +239,7 @@ let isPlayerDead = false;
 
 // Add bullet creation function
 function createBullet(gun) {
-    const bulletGeometry = new THREE.SphereGeometry(0.2); // Made bullets bigger
+    const bulletGeometry = new THREE.SphereGeometry(0.2);
     const bulletMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xff0000,
         emissive: 0xff0000,
@@ -247,11 +247,8 @@ function createBullet(gun) {
     });
     const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
     
-    // Set position and rotation
     bullet.position.copy(gun.getWorldPosition(new THREE.Vector3()));
     bullet.rotation.copy(car.rotation);
-    
-    // Add metadata
     bullet.ownerId = socket.id;
     bullet.createdAt = Date.now();
     
@@ -488,33 +485,32 @@ function animate() {
             bullet.position.x -= Math.sin(bullet.rotation.y) * BULLET_SPEED;
             bullet.position.z -= Math.cos(bullet.rotation.y) * BULLET_SPEED;
             
-            // Check collision with local player's car
-            if (bullet.ownerId !== socket.id) { // Only check other players' bullets
-                const dx = bullet.position.x - car.position.x;
-                const dz = bullet.position.z - car.position.z;
-                const distance = Math.sqrt(dx * dx + dz * dz);
-                
-                if (distance < COLLISION_RADIUS) {
-                    console.log('Bullet hit! Current health:', playerHealth); // Debug log
+            // Check collision with other players
+            Object.keys(players).forEach(id => {
+                if (id !== socket.id) { // Don't check collision with own bullets
+                    const player = players[id];
+                    const dx = bullet.position.x - player.position.x;
+                    const dz = bullet.position.z - player.position.z;
+                    const distance = Math.sqrt(dx * dx + dz * dz);
                     
-                    // Remove bullet
-                    scene.remove(bullet);
-                    bullets.splice(i, 1);
-                    
-                    // Apply damage
-                    playerHealth -= BULLET_DAMAGE;
-                    
-                    // Update health bar
-                    updateHealthBar();
-                    
-                    // Check for death
-                    if (playerHealth <= 0 && !isPlayerDead) {
-                        playerDeath();
+                    if (distance < 2) { // Hit detection radius
+                        // Remove bullet
+                        scene.remove(bullet);
+                        bullets.splice(i, 1);
+                        
+                        // Update health
+                        playerHealth -= BULLET_DAMAGE;
+                        updateHealthBar();
+                        
+                        // Check for destruction
+                        if (playerHealth <= 0 && !isPlayerDead) {
+                            playerDeath();
+                        }
                     }
                 }
-            }
+            });
             
-            // Remove bullets that have traveled too far
+            // Remove old bullets
             if (bullet.createdAt && Date.now() - bullet.createdAt > BULLET_LIFETIME) {
                 scene.remove(bullet);
                 bullets.splice(i, 1);
@@ -572,7 +568,6 @@ renderer.setClearColor(0x87ceeb); // Light blue sky color
 function updateHealthBar() {
     healthFill.style.width = `${playerHealth}%`;
     
-    // Change color based on health
     if (playerHealth > 60) {
         healthFill.style.backgroundColor = '#00ff00'; // Green
     } else if (playerHealth > 30) {
@@ -584,20 +579,13 @@ function updateHealthBar() {
 
 // Update the player death function
 function playerDeath() {
-    if (!isPlayerDead) {
-        isPlayerDead = true;
-        
-        // Create explosion effect
-        createExplosion(car.position.clone());
-        
-        // Hide the car
-        car.visible = false;
-        
-        // Start respawn timer
-        setTimeout(() => {
-            respawnPlayer();
-        }, RESPAWN_DELAY);
-    }
+    isPlayerDead = true;
+    createExplosion(car.position.clone());
+    car.visible = false;
+    
+    setTimeout(() => {
+        respawnPlayer();
+    }, 5000); // 5 second respawn delay
 }
 
 // Add explosion effect function

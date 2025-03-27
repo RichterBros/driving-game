@@ -226,6 +226,10 @@ let currentSpeed = 0;       // Current speed of the car
 const BULLET_DAMAGE = 5; // 5% damage per hit
 let playerHealth = 100;
 
+// Add at the top with other constants
+const RESPAWN_DELAY = 5000; // 5 seconds in milliseconds
+let isPlayerDead = false;
+
 // Add bullet creation function
 function createBullet(gun) {
     const bulletGeometry = new THREE.SphereGeometry(0.1);
@@ -292,7 +296,7 @@ document.body.appendChild(healthDisplay);
 function animate() {
     requestAnimationFrame(animate);
 
-    if (localPlayer) {
+    if (localPlayer && !isPlayerDead) {
         const rotationSpeed = 0.03;
 
         // Store previous position
@@ -440,8 +444,72 @@ function updateHealthBar() {
     }
 }
 
-// Add player death function
+// Update the player death function
 function playerDeath() {
+    isPlayerDead = true;
+    
+    // Create explosion effect
+    createExplosion(car.position.clone());
+    
+    // Hide the car
+    car.visible = false;
+    
+    // Start respawn timer
+    setTimeout(() => {
+        respawnPlayer();
+    }, RESPAWN_DELAY);
+}
+
+// Add explosion effect function
+function createExplosion(position) {
+    const particleCount = 30;
+    const particles = [];
+    
+    for (let i = 0; i < particleCount; i++) {
+        const geometry = new THREE.SphereGeometry(0.3);
+        const material = new THREE.MeshBasicMaterial({
+            color: Math.random() < 0.5 ? 0xff4500 : 0xff8c00 // Orange/red colors
+        });
+        const particle = new THREE.Mesh(geometry, material);
+        
+        // Set particle position to explosion center
+        particle.position.copy(position);
+        
+        // Add random velocity
+        particle.velocity = new THREE.Vector3(
+            (Math.random() - 0.5) * 2,
+            Math.random() * 2,
+            (Math.random() - 0.5) * 2
+        );
+        
+        scene.add(particle);
+        particles.push(particle);
+        
+        // Remove particle after 1 second
+        setTimeout(() => {
+            scene.remove(particle);
+            const index = particles.indexOf(particle);
+            if (index > -1) particles.splice(index, 1);
+        }, 1000);
+    }
+    
+    // Animate particles
+    function animateParticles() {
+        particles.forEach(particle => {
+            particle.position.add(particle.velocity);
+            particle.velocity.y -= 0.1; // Add gravity effect
+        });
+        
+        if (particles.length > 0) {
+            requestAnimationFrame(animateParticles);
+        }
+    }
+    
+    animateParticles();
+}
+
+// Add respawn function
+function respawnPlayer() {
     // Reset health
     playerHealth = 100;
     updateHealthBar();
@@ -452,6 +520,12 @@ function playerDeath() {
     
     // Reset speed
     currentSpeed = 0;
+    
+    // Make car visible again
+    car.visible = true;
+    
+    // Reset dead state
+    isPlayerDead = false;
     
     // Emit position update
     socket.emit('playerMovement', {

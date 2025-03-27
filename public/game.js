@@ -228,9 +228,9 @@ document.body.appendChild(healthBar);
 
 // Variables - these should be the ONLY declarations of these variables
 let currentSpeed = 0;
-let maxSpeed = 0.25;  // Reduced from 0.5 to 0.25 (50% reduction)
-let acceleration = 0.005;  // Reduced from 0.01 to 0.005 (50% reduction)
-let deceleration = 0.004;  // Reduced from 0.008 to 0.004 (50% reduction)
+let maxSpeed = 0.125;  // Reduced from 0.25 to 0.125 (50% slower)
+let acceleration = 0.0025;  // Reduced from 0.005 to 0.0025 (50% slower acceleration)
+let deceleration = 0.002;  // Reduced from 0.004 to 0.002 (50% slower deceleration)
 let isPlayerDead = false;
 let isRightMouseDown = false;
 let playerHealth = 100;
@@ -559,7 +559,7 @@ function animate() {
 
             // Only proceed with animation if we have a valid local player
             if (localPlayer && !isPlayerDead) {
-                const rotationSpeed = 0.03;
+                const rotationSpeed = 0.015;
 
                 // Store previous position and rotation
                 const previousPosition = car.position.clone();
@@ -684,19 +684,19 @@ function animate() {
                             const distance = Math.sqrt(dx * dx + dz * dz);
 
                             if (distance < HIT_RADIUS) {
-                                // Create hit effect
+                                console.log('Hit player:', id);
                                 createHitEffect(bullet.position.clone());
                                 
-                                // Remove bullet
                                 scene.remove(bullet);
                                 bullets.splice(i, 1);
                                 
-                                // Emit hit event with damage
+                                // Send both shooter and target IDs
                                 socket.emit('playerHit', {
                                     hitPlayerId: id,
                                     shooterId: socket.id,
-                                    damage: BULLET_DAMAGE  // Use constant 10% damage
+                                    damage: BULLET_DAMAGE
                                 });
+                                console.log('Emitted hit event with damage:', BULLET_DAMAGE);
                             }
                         }
                     });
@@ -724,7 +724,7 @@ function animate() {
                             socket.emit('playerHit', {
                                 hitPlayerId: socket.id,
                                 shooterId: socket.id,
-                                damage: BULLET_DAMAGE  // Use constant 10% damage
+                                damage: BULLET_DAMAGE
                             });
                             
                             if (playerHealth <= 0) {
@@ -795,7 +795,22 @@ renderer.setClearColor(0x87ceeb); // Light blue sky color
 socket.on('playerHit', (data) => {
     console.log('Received hit event:', data);
     
-    // Only apply damage if this client is the one that got hit
+    // If this client is the shooter, increase their score
+    if (data.shooterId === socket.id) {
+        if (!scores[socket.id]) {
+            scores[socket.id] = 0;
+        }
+        scores[socket.id]++;
+        console.log('Score increased to:', scores[socket.id]);
+        updateScores();
+        
+        // Check for win condition
+        if (scores[socket.id] >= POINTS_TO_WIN) {
+            showWinScreen();
+        }
+    }
+    
+    // If this client was hit, update their health
     if (data.hitPlayerId === socket.id) {
         playerHealth = Math.max(0, playerHealth - BULLET_DAMAGE);
         console.log('I was hit! Health:', playerHealth);
@@ -806,6 +821,49 @@ socket.on('playerHit', (data) => {
         }
     }
 });
+
+socket.on('playerKilled', (data) => {
+    console.log('Received kill event:', data);
+    
+    // Update score for killer
+    if (data.killedBy === socket.id) {
+        if (!scores[socket.id]) {
+            scores[socket.id] = 0;
+        }
+        scores[socket.id]++;
+        console.log('Score increased to:', scores[socket.id]);
+        updateScores();
+        
+        if (scores[socket.id] >= POINTS_TO_WIN) {
+            showWinScreen();
+        }
+    }
+});
+
+function showWinScreen() {
+    const winnerMessage = document.createElement('div');
+    winnerMessage.style.position = 'fixed';
+    winnerMessage.style.top = '50%';
+    winnerMessage.style.left = '50%';
+    winnerMessage.style.transform = 'translate(-50%, -50%)';
+    winnerMessage.style.color = 'white';
+    winnerMessage.style.fontFamily = 'Arial, sans-serif';
+    winnerMessage.style.fontSize = '48px';
+    winnerMessage.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+    winnerMessage.style.padding = '20px';
+    winnerMessage.style.borderRadius = '10px';
+    winnerMessage.style.textAlign = 'center';
+    winnerMessage.innerHTML = 'You Won!';
+    document.body.appendChild(winnerMessage);
+    
+    // Remove the message after 5 seconds
+    setTimeout(() => {
+        document.body.removeChild(winnerMessage);
+        // Reset scores
+        Object.keys(scores).forEach(id => scores[id] = 0);
+        updateScores();
+    }, 5000);
+}
 
 // Update the health bar update function
 function updateHealthBar() {
@@ -1048,4 +1106,98 @@ function checkBuildingCollision(position) {
     }
     return false;
 }
+
+// Add these with your other constants
+const POINTS_TO_WIN = 7;
+
+// Add score tracking
+const scores = {};
+
+// Add score display to the UI (add this near your health bar creation)
+const scoreDisplay = document.createElement('div');
+scoreDisplay.style.position = 'fixed';
+scoreDisplay.style.top = '20px';
+scoreDisplay.style.right = '20px';
+scoreDisplay.style.color = 'white';
+scoreDisplay.style.fontFamily = 'Arial, sans-serif';
+scoreDisplay.style.fontSize = '24px';
+scoreDisplay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+scoreDisplay.style.padding = '10px';
+scoreDisplay.style.borderRadius = '5px';
+document.body.appendChild(scoreDisplay);
+
+// Update the score display
+function updateScores() {
+    console.log('Updating scores:', scores);
+    let scoreText = 'Scores:<br>';
+    Object.keys(scores).forEach(id => {
+        const isYou = id === socket.id ? ' (You)' : '';
+        scoreText += `Player ${id}${isYou}: ${scores[id]}<br>`;
+    });
+    scoreDisplay.innerHTML = scoreText;
+}
+
+// Initialize player score when connecting
+socket.on('connect', () => {
+    console.log('Connected with ID:', socket.id);
+    scores[socket.id] = 0;
+    updateScores();
+});
+
+// Update playerHit event handler to track kills
+socket.on('playerHit', (data) => {
+    if (data.hitPlayerId === socket.id) {
+        playerHealth = Math.max(0, playerHealth - BULLET_DAMAGE);
+        updateHealthBar();
+        
+        if (playerHealth <= 0) {
+            // Award point to shooter
+            if (scores[data.shooterId] !== undefined) {
+                scores[data.shooterId]++;
+                updateScores();
+                
+                // Check for winner
+                if (scores[data.shooterId] >= POINTS_TO_WIN) {
+                    // Show winner message
+                    const winnerMessage = document.createElement('div');
+                    winnerMessage.style.position = 'fixed';
+                    winnerMessage.style.top = '50%';
+                    winnerMessage.style.left = '50%';
+                    winnerMessage.style.transform = 'translate(-50%, -50%)';
+                    winnerMessage.style.color = 'white';
+                    winnerMessage.style.fontFamily = 'Arial, sans-serif';
+                    winnerMessage.style.fontSize = '48px';
+                    winnerMessage.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+                    winnerMessage.style.padding = '20px';
+                    winnerMessage.style.borderRadius = '10px';
+                    winnerMessage.style.textAlign = 'center';
+                    winnerMessage.innerHTML = data.shooterId === socket.id ? 
+                        'You Won!' : 
+                        'Game Over!';
+                    document.body.appendChild(winnerMessage);
+                    
+                    // Reset scores after 5 seconds
+                    setTimeout(() => {
+                        Object.keys(scores).forEach(id => scores[id] = 0);
+                        updateScores();
+                        document.body.removeChild(winnerMessage);
+                    }, 5000);
+                }
+            }
+            playerDeath();
+        }
+    }
+});
+
+// Add score handling for new players
+socket.on('newPlayer', (playerInfo) => {
+    scores[playerInfo.id] = 0;
+    updateScores();
+});
+
+// Clean up scores when players disconnect
+socket.on('playerDisconnected', (playerId) => {
+    delete scores[playerId];
+    updateScores();
+});
 

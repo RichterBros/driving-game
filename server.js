@@ -129,6 +129,20 @@ io.on('connection', (socket) => {
         const connectedClients = Object.keys(players).length;
         console.log('Total connected clients:', connectedClients);
     });
+
+    // Handle player hits
+    socket.on('playerHit', (data) => {
+        console.log('Server received hit:', data);
+        // Broadcast the hit to all clients
+        io.emit('playerHit', data);
+    });
+
+    // Handle player kills
+    socket.on('playerKilled', (data) => {
+        console.log('Server received kill:', data);
+        // Broadcast the kill to all clients
+        io.emit('playerKilled', data);
+    });
 });
 
 const PORT = 3000;

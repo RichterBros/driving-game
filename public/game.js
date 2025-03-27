@@ -450,6 +450,9 @@ shootButton.addEventListener('touchend', () => {
     touchStates[' '] = false;
 });
 
+// Add health variables at the top
+let playerHealth = 100;
+
 // Game loop
 function animate() {
     requestAnimationFrame(animate);
@@ -522,7 +525,7 @@ function animate() {
             
             // Check collision with other players
             Object.keys(players).forEach(id => {
-                if (id !== socket.id) {
+                if (id !== socket.id) { // Don't check collision with own bullets
                     const player = players[id];
                     const dx = bullet.position.x - player.position.x;
                     const dz = bullet.position.z - player.position.z;
@@ -533,16 +536,8 @@ function animate() {
                         scene.remove(bullet);
                         bullets.splice(i, 1);
                         
-                        // Update health
-                        player.health -= BULLET_DAMAGE;
-                        updateHealthBar(player.health);
-                        
-                        // Check for destruction
-                        if (player.health <= 0) {
-                            createExplosion(player.position);
-                            scene.remove(player);
-                            delete players[id];
-                        }
+                        // Emit hit event
+                        socket.emit('bulletHit', id);
                     }
                 }
             });
@@ -603,18 +598,31 @@ renderer.setClearColor(0x87ceeb); // Light blue sky color
 
 // Add health bar update function
 function updateHealthBar(health) {
-    const percentage = Math.max(0, Math.min(100, health));
-    healthFill.style.width = percentage + '%';
+    healthFill.style.width = `${health}%`;
     
     // Change color based on health
-    if (percentage > 60) {
+    if (health > 60) {
         healthFill.style.backgroundColor = '#00ff00'; // Green
-    } else if (percentage > 30) {
+    } else if (health > 30) {
         healthFill.style.backgroundColor = '#ffff00'; // Yellow
     } else {
         healthFill.style.backgroundColor = '#ff0000'; // Red
     }
 }
+
+// Add socket event listeners for damage
+socket.on('playerHit', () => {
+    playerHealth -= 10; // Decrease health by 10
+    updateHealthBar(playerHealth);
+    
+    if (playerHealth <= 0) {
+        // Player is destroyed
+        socket.emit('playerDestroyed');
+        playerHealth = 100; // Reset health
+        // Reset position
+        car.position.set(0, 0.5, 0);
+    }
+});
 
 // Add meta viewport tag to your HTML for proper mobile scaling
 // Add this to your index.html <head> section:

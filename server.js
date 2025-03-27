@@ -43,6 +43,24 @@ io.on('connection', (socket) => {
         });
     });
 
+    // Handle bullet hits
+    socket.on('bulletHit', (hitPlayerId) => {
+        // Notify the hit player
+        io.to(hitPlayerId).emit('playerHit');
+    });
+
+    socket.on('playerDestroyed', () => {
+        // Reset player position and health
+        if (players[socket.id]) {
+            players[socket.id].position = { x: 0, y: 0.5, z: 0 };
+            socket.broadcast.emit('playerMoved', {
+                id: socket.id,
+                position: players[socket.id].position,
+                rotation: players[socket.id].rotation
+            });
+        }
+    });
+
     // Handle disconnection
     socket.on('disconnect', () => {
         console.log('A player disconnected');

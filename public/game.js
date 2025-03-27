@@ -144,12 +144,15 @@ const touchStates = {
     ' ': false
 };
 
-// Event listeners for controls
+// Add this near the top of your file, after your constants
+console.log('Game initialized!');
+
+// Update the keyboard event listeners
 window.addEventListener('keydown', (e) => {
     if (keys.hasOwnProperty(e.key)) {
         keys[e.key] = true;
         if (e.key === ' ') {
-            console.log('Spacebar pressed! 🔫');
+            console.log('Spacebar pressed!');
         }
     }
 });
@@ -245,6 +248,7 @@ let isPlayerDead = false;
 
 // Add bullet creation function
 function createBullet(gun) {
+    console.log('Creating bullet!');
     const bulletGeometry = new THREE.SphereGeometry(0.2);
     const bulletMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xff0000,
@@ -464,7 +468,7 @@ function animate() {
 
         // Handle shooting
         if (shooting) {
-            console.log('Spacebar pressed - Firing! 🔫');
+            console.log('Shooting!');
             createBullet(gunLeft);
             createBullet(gunRight);
         }

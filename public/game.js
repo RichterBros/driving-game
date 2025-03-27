@@ -250,7 +250,7 @@ function createBullet(gun) {
     
     bullet.position.copy(gun.getWorldPosition(new THREE.Vector3()));
     bullet.rotation.copy(car.rotation);
-    bullet.ownerId = socket.id; // Add owner ID to bullet
+    bullet.ownerId = socket.id; // Important: Add owner ID to bullet
     
     scene.add(bullet);
     bullets.push(bullet);
@@ -478,7 +478,6 @@ function animate() {
         wheelBR.rotation.x += wheelRotationSpeed;
 
         // Update bullets and check collisions
-        const currentTime = Date.now();
         for (let i = bullets.length - 1; i >= 0; i--) {
             const bullet = bullets[i];
             
@@ -486,12 +485,13 @@ function animate() {
             bullet.position.x -= Math.sin(bullet.rotation.y) * BULLET_SPEED;
             bullet.position.z -= Math.cos(bullet.rotation.y) * BULLET_SPEED;
             
-            // Check collision with car (local player)
+            // Check collision with local player's car
             const dx = bullet.position.x - car.position.x;
             const dz = bullet.position.z - car.position.z;
             const distance = Math.sqrt(dx * dx + dz * dz);
             
-            if (distance < 2 && bullet.ownerId !== socket.id) { // Hit detection radius and not own bullet
+            // Only take damage from other players' bullets
+            if (distance < 2 && bullet.ownerId !== socket.id) {
                 // Remove bullet
                 scene.remove(bullet);
                 bullets.splice(i, 1);
@@ -501,9 +501,11 @@ function animate() {
                 updateHealthBar();
                 
                 // Check if player is destroyed
-                if (playerHealth <= 0) {
+                if (playerHealth <= 0 && !isPlayerDead) {
                     playerDeath();
                 }
+                
+                continue; // Skip rest of loop after bullet is removed
             }
         }
 
@@ -570,18 +572,20 @@ function updateHealthBar() {
 
 // Update the player death function
 function playerDeath() {
-    isPlayerDead = true;
-    
-    // Create explosion effect
-    createExplosion(car.position.clone());
-    
-    // Hide the car
-    car.visible = false;
-    
-    // Start respawn timer
-    setTimeout(() => {
-        respawnPlayer();
-    }, RESPAWN_DELAY);
+    if (!isPlayerDead) {
+        isPlayerDead = true;
+        
+        // Create explosion effect
+        createExplosion(car.position.clone());
+        
+        // Hide the car
+        car.visible = false;
+        
+        // Start respawn timer
+        setTimeout(() => {
+            respawnPlayer();
+        }, RESPAWN_DELAY);
+    }
 }
 
 // Add explosion effect function
@@ -634,28 +638,13 @@ function createExplosion(position) {
 
 // Add respawn function
 function respawnPlayer() {
-    // Reset health
     playerHealth = 100;
     updateHealthBar();
-    
-    // Reset position
     car.position.set(0, 0.5, 0);
     car.rotation.y = 0;
-    
-    // Reset speed
-    currentSpeed = 0;
-    
-    // Make car visible again
     car.visible = true;
-    
-    // Reset dead state
     isPlayerDead = false;
-    
-    // Emit position update
-    socket.emit('playerMovement', {
-        position: car.position,
-        rotation: car.rotation
-    });
+    currentSpeed = 0;
 }
 
 // Add socket event listeners for damage

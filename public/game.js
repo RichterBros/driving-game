@@ -330,6 +330,87 @@ function createExplosion(position) {
     return particles;
 }
 
+// Add touch controls to the HTML first
+const touchControls = document.createElement('div');
+touchControls.style.position = 'fixed';
+touchControls.style.bottom = '20px';
+touchControls.style.left = '50%';
+touchControls.style.transform = 'translateX(-50%)';
+touchControls.style.display = 'none'; // Hide by default, show only on touch devices
+
+// Create touch buttons
+const buttonStyle = `
+    width: 60px;
+    height: 60px;
+    background: rgba(255, 255, 255, 0.3);
+    border: 2px solid white;
+    border-radius: 50%;
+    margin: 10px;
+    display: inline-block;
+    color: white;
+    font-size: 24px;
+    line-height: 60px;
+    text-align: center;
+    user-select: none;
+    -webkit-user-select: none;
+`;
+
+const buttons = {
+    up: createButton('↑'),
+    down: createButton('↓'),
+    left: createButton('←'),
+    right: createButton('→')
+};
+
+function createButton(text) {
+    const button = document.createElement('div');
+    button.style.cssText = buttonStyle;
+    button.innerText = text;
+    touchControls.appendChild(button);
+    return button;
+}
+
+// Add buttons to the page
+document.body.appendChild(touchControls);
+
+// Show controls only on touch devices
+if ('ontouchstart' in window) {
+    touchControls.style.display = 'block';
+}
+
+// Track touch states
+const touchStates = {
+    ArrowUp: false,
+    ArrowDown: false,
+    ArrowLeft: false,
+    ArrowRight: false
+};
+
+// Add touch event listeners
+buttons.up.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    touchStates.ArrowUp = true;
+});
+buttons.up.addEventListener('touchend', () => touchStates.ArrowUp = false);
+
+buttons.down.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    touchStates.ArrowDown = true;
+});
+buttons.down.addEventListener('touchend', () => touchStates.ArrowDown = false);
+
+buttons.left.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    touchStates.ArrowLeft = true;
+});
+buttons.left.addEventListener('touchend', () => touchStates.ArrowLeft = false);
+
+buttons.right.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    touchStates.ArrowRight = true;
+});
+buttons.right.addEventListener('touchend', () => touchStates.ArrowRight = false);
+
 // Game loop
 function animate() {
     requestAnimationFrame(animate);
@@ -340,13 +421,18 @@ function animate() {
         // Store previous position
         const previousPosition = car.position.clone();
 
-        // Handle acceleration and movement
-        if (keys.ArrowUp) {
+        // Combine keyboard and touch inputs
+        const up = keys.ArrowUp || touchStates.ArrowUp;
+        const down = keys.ArrowDown || touchStates.ArrowDown;
+        const left = keys.ArrowLeft || touchStates.ArrowLeft;
+        const right = keys.ArrowRight || touchStates.ArrowRight;
+
+        // Use combined inputs for movement
+        if (up) {
             currentSpeed = Math.min(currentSpeed + ACCELERATION, MAX_SPEED);
-        } else if (keys.ArrowDown) {
+        } else if (down) {
             currentSpeed = Math.max(currentSpeed - ACCELERATION, -MAX_SPEED * 0.5);
         } else {
-            // Decelerate when no input
             if (currentSpeed > 0) {
                 currentSpeed = Math.max(0, currentSpeed - DECELERATION);
             } else if (currentSpeed < 0) {
@@ -354,13 +440,13 @@ function animate() {
             }
         }
 
-        // Apply movement based on current speed
+        // Apply movement
         car.position.x -= Math.sin(car.rotation.y) * currentSpeed;
         car.position.z -= Math.cos(car.rotation.y) * currentSpeed;
 
-        // Turning
-        if (keys.ArrowLeft) car.rotation.y += rotationSpeed * (Math.abs(currentSpeed) / MAX_SPEED);
-        if (keys.ArrowRight) car.rotation.y -= rotationSpeed * (Math.abs(currentSpeed) / MAX_SPEED);
+        // Apply turning
+        if (left) car.rotation.y += rotationSpeed * (Math.abs(currentSpeed) / MAX_SPEED);
+        if (right) car.rotation.y -= rotationSpeed * (Math.abs(currentSpeed) / MAX_SPEED);
 
         // Handle shooting
         if (keys[' ']) {
@@ -489,4 +575,8 @@ function updateHealthBar(health) {
     } else {
         healthFill.style.backgroundColor = '#ff0000'; // Red
     }
-} 
+}
+
+// Add meta viewport tag to your HTML for proper mobile scaling
+// Add this to your index.html <head> section:
+// <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"> 

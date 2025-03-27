@@ -112,7 +112,7 @@ let localPlayer = null;
 
 // Add to the constants section
 const bullets = [];
-const BULLET_SPEED = 2;
+const BULLET_SPEED = 1.5;
 const BULLET_LIFETIME = 1000; // milliseconds
 
 // Add gun models to the car
@@ -233,7 +233,7 @@ let currentSpeed = 0;       // Current speed of the car
 
 // Add at the top with other constants
 const BULLET_DAMAGE = 1; // 1% damage per hit
-const BULLET_HIT_RADIUS = 2; // Collision detection radius
+const BULLET_HIT_RADIUS = 1.5; // Smaller radius for more precise hits
 let playerHealth = 100;
 
 // Add at the top with other constants
@@ -242,7 +242,7 @@ let isPlayerDead = false;
 
 // Add bullet creation function
 function createBullet(gun) {
-    const bulletGeometry = new THREE.SphereGeometry(0.1);
+    const bulletGeometry = new THREE.SphereGeometry(0.2); // Slightly larger bullets
     const bulletMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xff0000,
         emissive: 0xff0000,
@@ -252,6 +252,7 @@ function createBullet(gun) {
     
     // Set bullet position and properties
     bullet.position.copy(gun.getWorldPosition(new THREE.Vector3()));
+    bullet.position.y = 0.5; // Set bullet height to match car height
     bullet.rotation.copy(car.rotation);
     bullet.ownerId = socket.id;
     bullet.createdAt = Date.now();
@@ -488,32 +489,62 @@ function animate() {
             // Move bullet
             bullet.position.x -= Math.sin(bullet.rotation.y) * BULLET_SPEED;
             bullet.position.z -= Math.cos(bullet.rotation.y) * BULLET_SPEED;
-            
-            // Check if bullet hit local player's car
-            if (bullet.ownerId !== socket.id) { // Only check bullets from other players
+
+            // Check collision with local player's car
+            if (bullet.ownerId !== socket.id) { // Don't check our own bullets
                 const dx = bullet.position.x - car.position.x;
+                const dy = bullet.position.y - car.position.y;
                 const dz = bullet.position.z - car.position.z;
-                const distance = Math.sqrt(dx * dx + dz * dz);
-                
+                const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
                 if (distance < BULLET_HIT_RADIUS) {
-                    // Remove bullet
+                    console.log('Bullet hit local player!'); // Debug log
+                    
+                    // Remove the bullet
                     scene.remove(bullet);
                     bullets.splice(i, 1);
-                    
-                    // Decrease health
+
+                    // Apply damage
                     playerHealth = Math.max(0, playerHealth - BULLET_DAMAGE);
                     updateHealthBar();
-                    
+
+                    // Check for death
                     if (playerHealth <= 0) {
                         playerDeath();
                     }
-                    
-                    continue; // Skip rest of loop for this bullet
+
+                    // Skip rest of loop for this bullet
+                    continue;
                 }
             }
-            
+
+            // Check collision with other players
+            Object.keys(players).forEach(id => {
+                if (id !== socket.id && bullet.ownerId === socket.id) { // Only check our bullets against other players
+                    const player = players[id];
+                    const dx = bullet.position.x - player.position.x;
+                    const dy = bullet.position.y - player.position.y;
+                    const dz = bullet.position.z - player.position.z;
+                    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+                    if (distance < BULLET_HIT_RADIUS) {
+                        console.log('Bullet hit other player!'); // Debug log
+                        
+                        // Remove the bullet
+                        scene.remove(bullet);
+                        bullets.splice(i, 1);
+
+                        // Emit hit event to server
+                        socket.emit('bulletHit', {
+                            hitPlayerId: id,
+                            damage: BULLET_DAMAGE
+                        });
+                    }
+                }
+            });
+
             // Remove old bullets
-            if (Date.now() - bullet.createdAt > BULLET_LIFETIME) {
+            if (Date.now() - bullet.createdAt > 2000) { // 2 seconds lifetime
                 scene.remove(bullet);
                 bullets.splice(i, 1);
             }
@@ -672,15 +703,11 @@ function respawnPlayer() {
 
 // Add socket event listeners for damage
 socket.on('playerHit', () => {
-    playerHealth -= 10; // Decrease health by 10
+    playerHealth = Math.max(0, playerHealth - BULLET_DAMAGE);
     updateHealthBar();
     
     if (playerHealth <= 0) {
-        // Player is destroyed
-        socket.emit('playerDestroyed');
-        playerHealth = 100; // Reset health
-        // Reset position
-        car.position.set(0, 0.5, 0);
+        playerDeath();
     }
 });
 

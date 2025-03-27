@@ -231,7 +231,7 @@ const DECELERATION = 0.01;  // How quickly the car slows down
 let currentSpeed = 0;       // Current speed of the car
 
 // Add at the top with other constants
-const BULLET_DAMAGE = 5; // 5% damage per hit
+const BULLET_DAMAGE = 1; // 1% damage per hit
 let playerHealth = 100;
 
 // Add at the top with other constants
@@ -485,27 +485,27 @@ function animate() {
             bullet.position.x -= Math.sin(bullet.rotation.y) * BULLET_SPEED;
             bullet.position.z -= Math.cos(bullet.rotation.y) * BULLET_SPEED;
             
-            // Check collision with local player's car
+            // Check collision with car (local player)
             const dx = bullet.position.x - car.position.x;
             const dz = bullet.position.z - car.position.z;
             const distance = Math.sqrt(dx * dx + dz * dz);
             
-            // Only take damage from other players' bullets
-            if (distance < 2 && bullet.ownerId !== socket.id) {
+            // Only take damage from other players' bullets and if not dead
+            if (distance < 2 && bullet.ownerId !== socket.id && !isPlayerDead) {
+                console.log('Hit! Health: ' + playerHealth); // Debug log
+                
                 // Remove bullet
                 scene.remove(bullet);
                 bullets.splice(i, 1);
                 
-                // Decrease health
-                playerHealth -= BULLET_DAMAGE;
+                // Decrease health by 1%
+                playerHealth = Math.max(0, playerHealth - BULLET_DAMAGE);
                 updateHealthBar();
                 
                 // Check if player is destroyed
-                if (playerHealth <= 0 && !isPlayerDead) {
+                if (playerHealth <= 0) {
                     playerDeath();
                 }
-                
-                continue; // Skip rest of loop after bullet is removed
             }
         }
 

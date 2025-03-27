@@ -242,7 +242,7 @@ let isPlayerDead = false;
 
 // Add bullet creation function
 function createBullet(gun) {
-    const bulletGeometry = new THREE.SphereGeometry(0.2); // Slightly larger bullets
+    const bulletGeometry = new THREE.SphereGeometry(0.2);
     const bulletMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xff0000,
         emissive: 0xff0000,
@@ -250,15 +250,16 @@ function createBullet(gun) {
     });
     const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
     
-    // Set bullet position and properties
     bullet.position.copy(gun.getWorldPosition(new THREE.Vector3()));
-    bullet.position.y = 0.5; // Set bullet height to match car height
+    bullet.position.y = 0.5;
     bullet.rotation.copy(car.rotation);
     bullet.ownerId = socket.id;
     bullet.createdAt = Date.now();
     
     scene.add(bullet);
     bullets.push(bullet);
+
+    console.log('Bullet fired! 🔫');
 }
 
 // Add collision helper function

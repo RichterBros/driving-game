@@ -552,11 +552,16 @@ function addPlayer(id, playerInfo) {
 }
 
 // Add these constants with your other constants
-const SKID_MARK_LIFETIME = 5000; // How long skid marks last (5 seconds)
+const SKID_MARK_LIFETIME = 2500; // How long skid marks last (5 seconds)
 const SKID_MARK_OPACITY = 0.5;   // Initial opacity of skid marks
 const skidMarks = [];            // Array to store skid marks
 
-// Add this function to create skid marks
+// Add these constants
+const MAX_SKID_MARKS = 10;  // Maximum number of skid marks allowed
+const SKID_MARK_SPACING = 0.2;  // Minimum distance between skid marks
+let lastSkidPosition = new THREE.Vector3();  // Track last skid mark position
+
+// Update the createSkidMark function
 function createSkidMark(position, rotation) {
     const skidMarkGeometry = new THREE.PlaneGeometry(0.3, 0.8);
     const skidMarkMaterial = new THREE.MeshBasicMaterial({
@@ -600,7 +605,7 @@ const GRASS_SIZE = 0.3;    // Size of each grass patch
 // Create grass function
 function createGrass() {
     const MIN_HEIGHT = 1.5;    // Minimum grass height multiplier
-    const MAX_HEIGHT = 3.0;    // Maximum grass height multiplier
+    const MAX_HEIGHT = 5.0;    // Maximum grass height multiplier
 
     for (let i = 0; i < GRASS_COUNT; i++) {
         // Random height for this grass blade
@@ -717,40 +722,43 @@ function animate() {
                 }
 
                 // Handle turning
-                if (left) {
-                    car.rotation.y += rotationSpeed;
-                    // Add skid marks if moving fast enough
-                    if (Math.abs(currentSpeed) > maxSpeed * 0.3) {
-                        const wheelPositions = [
-                            new THREE.Vector3(-1.2, 0, 1.2),
-                            new THREE.Vector3(1.2, 0, 1.2),
-                            new THREE.Vector3(-1.2, 0, -1.2),
-                            new THREE.Vector3(1.2, 0, -1.2)
-                        ];
-                        
-                        wheelPositions.forEach(wheelPos => {
-                            const worldPos = wheelPos.clone();
-                            worldPos.applyMatrix4(car.matrixWorld);
-                            createSkidMark(worldPos, car.rotation.y);
-                        });
+                if (left || right) {
+                    // Apply turning
+                    if (left) {
+                        car.rotation.y += rotationSpeed;
+                        // Add skid marks if moving fast enough
+                        if (Math.abs(currentSpeed) > maxSpeed * 0.3) {
+                            const wheelPositions = [
+                                new THREE.Vector3(-1.2, 0, 1.2),
+                                new THREE.Vector3(1.2, 0, 1.2),
+                                new THREE.Vector3(-1.2, 0, -1.2),
+                                new THREE.Vector3(1.2, 0, -1.2)
+                            ];
+                            
+                            wheelPositions.forEach(wheelPos => {
+                                const worldPos = wheelPos.clone();
+                                worldPos.applyMatrix4(car.matrixWorld);
+                                createSkidMark(worldPos, car.rotation.y);
+                            });
+                        }
                     }
-                }
-                if (right) {
-                    car.rotation.y -= rotationSpeed;
-                    // Add skid marks if moving fast enough
-                    if (Math.abs(currentSpeed) > maxSpeed * 0.3) {
-                        const wheelPositions = [
-                            new THREE.Vector3(-1.2, 0, 1.2),
-                            new THREE.Vector3(1.2, 0, 1.2),
-                            new THREE.Vector3(-1.2, 0, -1.2),
-                            new THREE.Vector3(1.2, 0, -1.2)
-                        ];
-                        
-                        wheelPositions.forEach(wheelPos => {
-                            const worldPos = wheelPos.clone();
-                            worldPos.applyMatrix4(car.matrixWorld);
-                            createSkidMark(worldPos, car.rotation.y);
-                        });
+                    if (right) {
+                        car.rotation.y -= rotationSpeed;
+                        // Add skid marks if moving fast enough
+                        if (Math.abs(currentSpeed) > maxSpeed * 0.3) {
+                            const wheelPositions = [
+                                new THREE.Vector3(-1.2, 0, 1.2),
+                                new THREE.Vector3(1.2, 0, 1.2),
+                                new THREE.Vector3(-1.2, 0, -1.2),
+                                new THREE.Vector3(1.2, 0, -1.2)
+                            ];
+                            
+                            wheelPositions.forEach(wheelPos => {
+                                const worldPos = wheelPos.clone();
+                                worldPos.applyMatrix4(car.matrixWorld);
+                                createSkidMark(worldPos, car.rotation.y);
+                            });
+                        }
                     }
                 }
 

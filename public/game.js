@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js'
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js'
 
 // Constants
 const FORWARD_FORCE = 500;
@@ -15,6 +16,9 @@ const RAMP_DIMENSIONS = {
     height: 2,   // Height at the tall end
     length: 8    // Length of the ramp
 };
+
+// Declare variables at the top
+let carMesh = null;
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -38,19 +42,12 @@ controls.enableDamping = true; // Smooth camera movement
 controls.dampingFactor = 0.05;
 
 // Lights
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.7); // Increased ambient light
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
 
-const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
 dirLight.position.set(10, 10, 10);
 dirLight.castShadow = true;
-dirLight.shadow.camera.left = -50;
-dirLight.shadow.camera.right = 50;
-dirLight.shadow.camera.top = 50;
-dirLight.shadow.camera.bottom = -50;
-dirLight.shadow.camera.far = 100;
-dirLight.shadow.mapSize.width = 2048;
-dirLight.shadow.mapSize.height = 2048;
 scene.add(dirLight);
 
 // Physics World
@@ -111,11 +108,19 @@ world.addBody(groundBody);
 
 // Ground mesh
 const groundGeometry = new THREE.PlaneGeometry(50, 50);
-const groundVisualMaterial = new THREE.MeshStandardMaterial({ color: 0x808080 });
+const groundVisualMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x808080,
+    roughness: 0.8,
+    metalness: 0.2
+});
 const groundMesh = new THREE.Mesh(groundGeometry, groundVisualMaterial);
 groundMesh.receiveShadow = true;
 groundMesh.rotation.x = -Math.PI / 2;
 scene.add(groundMesh);
+
+// Grid Helper
+const gridHelper = new THREE.GridHelper(50, 50);
+scene.add(gridHelper);
 
 // Ramp - Visual
 const rampGeometry = new THREE.BoxGeometry(
@@ -232,15 +237,24 @@ const carBody = new CANNON.Body({
 world.addBody(carBody);
 
 // Car body - VISUAL
-const carGeometry = new THREE.BoxGeometry(
-    carDimensions.length,
-    carDimensions.height,
-    carDimensions.width
+const loader = new GLTFLoader();
+
+// Load the car model
+loader.load(
+    '/car2.glb',
+    function (gltf) {
+        carMesh = gltf.scene;
+        carMesh.position.set(0, 2, 0);
+        scene.add(carMesh);
+        console.log('Model loaded successfully');
+    },
+    function (xhr) {
+        console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+    },
+    function (error) {
+        console.error('Error loading model:', error);
+    }
 );
-const carMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
-const carMesh = new THREE.Mesh(carGeometry, carMaterial);
-carMesh.castShadow = true;
-scene.add(carMesh);
 
 // Wheel geometry and material for visual wheels
 const wheelGeometry = new THREE.CylinderGeometry(
@@ -374,6 +388,13 @@ let speedMultiplier = 0;
 const timeStep = 1/60;
 function animate() {
     requestAnimationFrame(animate);
+    
+    // Only try to update the car if it's loaded
+    if (carMesh) {
+        // Update car position and rotation
+        carMesh.position.copy(carBody.position);
+        carMesh.quaternion.copy(carBody.quaternion);
+    }
 
     // Handle acceleration and deceleration
     if (keysPressed.w) {
@@ -446,20 +467,10 @@ function animate() {
         }
     }
 
-    // Add visual feedback for speed (optional)
-    carMesh.material.color.setRGB(
-        0,  // Red
-        0,  // Green
-        1 + (speedMultiplier / MAX_SPEED)  // Blue (gets brighter with speed)
-    );
-
     // Update physics
     world.step(1/60);
 
     // Update visuals
-    carMesh.position.copy(carBody.position);
-    carMesh.quaternion.copy(carBody.quaternion);
-
     wheelBodies.forEach((wheelBody, i) => {
         wheelMeshes[i].position.copy(wheelBody.position);
         wheelMeshes[i].quaternion.copy(wheelBody.quaternion);

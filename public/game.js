@@ -104,6 +104,7 @@ const backWheels = [];
 const groundPhysMaterial = new CANNON.Material('ground');
 const wheelMaterial = new CANNON.Material('wheel');
 const carPhysMaterial = new CANNON.Material('car');
+const spherePhysMaterial = new CANNON.Material('sphere');  // Add sphere material
 
 // Contact material
 const wheelGroundContact = new CANNON.ContactMaterial(
@@ -118,6 +119,32 @@ const wheelGroundContact = new CANNON.ContactMaterial(
 );
 world.addContactMaterial(wheelGroundContact);
 
+// Contact material for sphere
+const sphereGroundContact = new CANNON.ContactMaterial(
+    groundPhysMaterial,
+    spherePhysMaterial,
+    {
+        friction: 0.3,
+        restitution: 0.8,  // More bouncy
+        contactEquationStiffness: 1e8,
+        contactEquationRelaxation: 3
+    }
+);
+world.addContactMaterial(sphereGroundContact);
+
+// Contact material for sphere and car
+const sphereCarContact = new CANNON.ContactMaterial(
+    carPhysMaterial,
+    spherePhysMaterial,
+    {
+        friction: 0.5,
+        restitution: 0.7,
+        contactEquationStiffness: 1e8,
+        contactEquationRelaxation: 3
+    }
+);
+world.addContactMaterial(sphereCarContact);
+
 // Ground body
 const groundBody = new CANNON.Body({
     mass: 0,
@@ -131,7 +158,7 @@ world.addBody(groundBody);
 // Ground mesh
 const groundGeometry = new THREE.PlaneGeometry(50, 50);
 const groundVisualMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x808080,
+    color: 0x00ff00,
     roughness: 0.8,
     metalness: 0.2
 });
@@ -361,11 +388,11 @@ scene.add(sphereMesh);
 // Create sphere physics body
 const sphereBody = new CANNON.Body({
     mass: 5,
-    material: wheelMaterial, // Use same material as vehicle
+    material: spherePhysMaterial,  // Use the new sphere material
     shape: new CANNON.Sphere(sphereRadius),
     position: new CANNON.Vec3(5, 10, 5),
-    linearDamping: 0.3,
-    angularDamping: 0.3
+    linearDamping: 0.2,  // Reduced damping for more movement
+    angularDamping: 0.2  // Reduced damping for more rotation
 });
 world.addBody(sphereBody);
 

@@ -189,7 +189,7 @@ groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
 world.addBody(groundBody);
 
 // Ground mesh
-const groundGeometry = new THREE.PlaneGeometry(50, 50);
+const groundGeometry = new THREE.PlaneGeometry(500, 500);
 const groundVisualMaterial = new THREE.MeshStandardMaterial({ 
     color: 0x00ff00,
     roughness: 0.8,
@@ -201,7 +201,7 @@ groundMesh.rotation.x = -Math.PI / 2;
 scene.add(groundMesh);
 
 // Grid Helper
-const gridHelper = new THREE.GridHelper(50, 50);
+const gridHelper = new THREE.GridHelper(500, 50);
 scene.add(gridHelper);
 
 // Ramp - Visual
@@ -261,28 +261,28 @@ const arrowHelper = new THREE.ArrowHelper(
 scene.add(arrowHelper);
 
 // Optional: Add some decorative elements around the ramp
-function addBarrier(x, z, rotation = 0) {
-    const barrierGeometry = new THREE.BoxGeometry(0.5, 1, 2);
-    const barrierMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-    const barrier = new THREE.Mesh(barrierGeometry, barrierMaterial);
-    barrier.position.set(x, 0.5, z);
-    barrier.rotation.y = rotation;
-    barrier.castShadow = true;
-    scene.add(barrier);
+//function addBarrier(x, z, rotation = 0) {
+//    const barrierGeometry = new THREE.BoxGeometry(0.5, 1, 2);
+//    const barrierMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+//    const barrier = new THREE.Mesh(barrierGeometry, barrierMaterial);
+//    barrier.position.set(x, 0.5, z);
+//    barrier.rotation.y = rotation;
+    //barrier.castShadow = true;
+//    scene.add(barrier);
 
     // Add physics body for barrier
-    const barrierBody = new CANNON.Body({
-        mass: 0,
-        shape: new CANNON.Box(new CANNON.Vec3(0.25, 0.5, 1)),
-        position: new CANNON.Vec3(x, 0.5, z)
-    });
-    barrierBody.quaternion.setFromEuler(0, rotation, 0);
-    world.addBody(barrierBody);
-}
+    //const barrierBody = new CANNON.Body({
+    //    mass: 0,
+    //    shape: new CANNON.Box(new CANNON.Vec3(0.25, 0.5, 1)),
+    //    position: new CANNON.Vec3(x, 0.5, z)
+    //});
+    //barrierBody.quaternion.setFromEuler(0, rotation, 0);
+    //world.addBody(barrierBody);
+//}
 
 // Add barriers around the ramp
-addBarrier(-10, RAMP_DIMENSIONS.width/2 + 1, 0);
-addBarrier(-10, -RAMP_DIMENSIONS.width/2 - 1, 0);
+//addBarrier(-10, RAMP_DIMENSIONS.width/2 + 1, 0);
+//addBarrier(-10, -RAMP_DIMENSIONS.width/2 - 1, 0);
 
 // Optional: Add landing zone marker
 const landingZoneGeometry = new THREE.PlaneGeometry(5, 5);

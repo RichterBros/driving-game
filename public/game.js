@@ -20,12 +20,26 @@ const RAMP_DIMENSIONS = {
 const MOVE_SPEED = 0.1;
 const TURN_SPEED = 0.03;
 const BRAKE_RATE = 0.01;
+const MAX_SPEED_LIMIT = 50;  // Maximum speed limit
+const ACCELERATION = 1000;  // How quickly the car speeds up
+const DECELERATION = 500;   // How quickly the car slows down
+
+// Add these constants for bullets
+const BULLET_RADIUS = 0.1;
+const BULLET_SPEED = 50;
+const BULLET_LIFETIME = 2000; // 2 seconds
+const BULLET_COOLDOWN = 100; // milliseconds between shots
 
 // Declare variables at the top
 let carMesh = null;
 let carBody = null;
 let currentSpeed = 0;
 let currentRotation = 0;
+let targetSpeed = 0;
+
+// Add these variables for bullet management
+let bullets = [];
+let lastBulletTime = 0;
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -295,7 +309,8 @@ const keysPressed = {
     w: false,
     s: false,
     a: false,
-    d: false
+    d: false,
+    space: false
 };
 
 // Add keyboard event listeners
@@ -306,6 +321,7 @@ document.addEventListener('keydown', (event) => {
         case 's': keysPressed.s = true; break;
         case 'a': keysPressed.a = true; break;
         case 'd': keysPressed.d = true; break;
+        case ' ': keysPressed.space = true; break;
     }
 });
 
@@ -315,6 +331,7 @@ document.addEventListener('keyup', (event) => {
         case 's': keysPressed.s = false; break;
         case 'a': keysPressed.a = false; break;
         case 'd': keysPressed.d = false; break;
+        case ' ': keysPressed.space = false; break;
     }
 });
 
@@ -363,23 +380,42 @@ function animate() {
     world.step(1/60);
     
     if (carMesh && carBody) {
+        // Handle speed changes
         if (keysPressed.w) {
-            const force = new CANNON.Vec3(0, 0, 40000); // Increased force
-            carBody.applyLocalForce(force, new CANNON.Vec3(0, 0, 0));
+            targetSpeed = MAX_SPEED_LIMIT;
+        } else if (keysPressed.s) {
+            targetSpeed = -MAX_SPEED_LIMIT;
+        } else {
+            targetSpeed = 0;
         }
-        if (keysPressed.s) {
-            const force = new CANNON.Vec3(0, 0, -40000); // Increased force
+
+        // Smoothly adjust current speed
+        if (currentSpeed < targetSpeed) {
+            currentSpeed = Math.min(currentSpeed + ACCELERATION * timeStep, targetSpeed);
+        } else if (currentSpeed > targetSpeed) {
+            currentSpeed = Math.max(currentSpeed - DECELERATION * timeStep, targetSpeed);
+        }
+
+        // Apply the force based on current speed
+        if (currentSpeed !== 0) {
+            const force = new CANNON.Vec3(0, 0, currentSpeed * 1000);
             carBody.applyLocalForce(force, new CANNON.Vec3(0, 0, 0));
         }
         
-        // Improved turning
+        // Improved turning with reduced speed
         if (keysPressed.a) {
-            carBody.angularVelocity.set(0, 2, 0);  // Increased turning speed
+            carBody.angularVelocity.set(0, 2, 0);  // Increased from 1 to 2 for faster left turns
         } else if (keysPressed.d) {
-            carBody.angularVelocity.set(0, -2, 0); // Increased turning speed
+            carBody.angularVelocity.set(0, -2, 0); // Increased from -1 to -2 for faster right turns
         } else {
-            carBody.angularVelocity.scale(0.85);   // Quicker rotation stop
+            carBody.angularVelocity.scale(0.9);   // Smoother rotation stop
         }
+
+        // Update wheel positions and rotations
+        wheelBodies.forEach((wheelBody, index) => {
+            wheelMeshes[index].position.copy(wheelBody.position);
+            wheelMeshes[index].quaternion.copy(wheelBody.quaternion);
+        });
 
         // Only keep car upright if not in collision
         const velocity = carBody.velocity.length();
@@ -393,7 +429,37 @@ function animate() {
         // Update visual mesh
         carMesh.position.copy(carBody.position);
         carMesh.quaternion.copy(carBody.quaternion);
+
+        // Handle bullet firing
+        if (keysPressed.space) {
+            const currentTime = Date.now();
+            if (currentTime - lastBulletTime >= BULLET_COOLDOWN) {
+                // Get car's forward direction
+                const carDirection = new THREE.Vector3(0, 0, 1);
+                carDirection.applyQuaternion(carMesh.quaternion);
+                
+                // Get bullet spawn position (slightly in front of the car)
+                const spawnOffset = new THREE.Vector3(0, 0, 2);
+                spawnOffset.applyQuaternion(carMesh.quaternion);
+                const spawnPosition = new THREE.Vector3(
+                    carMesh.position.x + spawnOffset.x,
+                    carMesh.position.y + spawnOffset.y,
+                    carMesh.position.z + spawnOffset.z
+                );
+
+                // Create and add new bullet
+                bullets.push(createBullet(spawnPosition, carDirection));
+                lastBulletTime = currentTime;
+            }
+        }
     }
+
+    // Update bullets
+    updateBullets();
+
+    // Update sphere position
+    sphereMesh.position.copy(sphereBody.position);
+    sphereMesh.quaternion.copy(sphereBody.quaternion);
 
     renderer.render(scene, camera);
 }
@@ -426,3 +492,76 @@ removeWheels();
 
 // Start animation
 animate();
+
+// Add bullet material
+const bulletMaterial = new CANNON.Material('bullet');
+
+// Add contact material for bullets
+const bulletGroundContact = new CANNON.ContactMaterial(
+    groundPhysMaterial,
+    bulletMaterial,
+    {
+        friction: 0.3,
+        restitution: 0.3,
+        contactEquationStiffness: 1e8,
+        contactEquationRelaxation: 3
+    }
+);
+world.addContactMaterial(bulletGroundContact);
+
+// Function to create a bullet
+function createBullet(position, direction) {
+    const bulletGeometry = new THREE.SphereGeometry(BULLET_RADIUS, 8, 8);
+    const bulletVisualMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xffff00,
+        metalness: 0.8,
+        roughness: 0.2
+    });
+    const bulletMesh = new THREE.Mesh(bulletGeometry, bulletVisualMaterial);
+    bulletMesh.position.copy(position);
+    bulletMesh.castShadow = true;
+    scene.add(bulletMesh);
+
+    const bulletBody = new CANNON.Body({
+        mass: 0.1,
+        material: bulletMaterial,
+        shape: new CANNON.Sphere(BULLET_RADIUS),
+        position: new CANNON.Vec3(position.x, position.y, position.z),
+        linearDamping: 0.1,
+        angularDamping: 0.1
+    });
+
+    // Apply initial velocity in the direction the car is facing
+    const velocity = new CANNON.Vec3(direction.x, direction.y, direction.z);
+    velocity.scale(BULLET_SPEED, bulletBody.velocity);
+    
+    world.addBody(bulletBody);
+
+    return {
+        mesh: bulletMesh,
+        body: bulletBody,
+        time: Date.now()
+    };
+}
+
+// Function to update bullets
+function updateBullets() {
+    const currentTime = Date.now();
+    
+    // Remove old bullets
+    bullets = bullets.filter(bullet => {
+        const age = currentTime - bullet.time;
+        if (age >= BULLET_LIFETIME) {
+            scene.remove(bullet.mesh);
+            world.removeBody(bullet.body);
+            return false;
+        }
+        return true;
+    });
+
+    // Update bullet positions
+    bullets.forEach(bullet => {
+        bullet.mesh.position.copy(bullet.body.position);
+        bullet.mesh.quaternion.copy(bullet.body.quaternion);
+    });
+}

@@ -12,7 +12,7 @@ const MIN_SPEED = 0.0;              // Minimum speed multiplier
 const RAMP_ANGLE = Math.PI / 6;  // 30 degrees
 const RAMP_DIMENSIONS = {
     width: 5,    // Width of the ramp
-    height: 2,   // Height at the tall end
+    height: 1,   // Reduced from 2 to 1 for lower height
     length: 8    // Length of the ramp
 };
 
@@ -214,40 +214,40 @@ const rampMaterial = new THREE.MeshStandardMaterial({
     color: 0x444444,
     roughness: 0.7
 });
-const rampMesh = new THREE.Mesh(rampGeometry, rampMaterial);
-rampMesh.position.set(-10, RAMP_DIMENSIONS.height/2, 0); // Position in front of starting position
-rampMesh.rotation.z = -RAMP_ANGLE;  // Tilt the ramp
-rampMesh.castShadow = true;
-rampMesh.receiveShadow = true;
-scene.add(rampMesh);
 
-// Ramp - Physics
-const rampShape = new CANNON.Box(new CANNON.Vec3(
-    RAMP_DIMENSIONS.length/2,
-    RAMP_DIMENSIONS.height/2,
-    RAMP_DIMENSIONS.width/2
-));
-const rampBody = new CANNON.Body({
-    mass: 0,
-    material: groundPhysMaterial,
-    shape: rampShape,
-    position: new CANNON.Vec3(-10, RAMP_DIMENSIONS.height/2, 0)
+// Create array to store all ramps
+const ramps = [
+    { position: new THREE.Vector3(-20, RAMP_DIMENSIONS.height/2, 0), rotation: -RAMP_ANGLE },     // Original ramp, moved further left
+    { position: new THREE.Vector3(20, RAMP_DIMENSIONS.height/2, 0), rotation: RAMP_ANGLE },       // Opposite direction, moved further right
+    { position: new THREE.Vector3(0, RAMP_DIMENSIONS.height/2, 20), rotation: -RAMP_ANGLE/2 },    // Forward ramp, moved further forward
+    { position: new THREE.Vector3(0, RAMP_DIMENSIONS.height/2, -20), rotation: RAMP_ANGLE/2 }     // Backward ramp, moved further back
+];
+
+// Create visual and physics bodies for all ramps
+ramps.forEach(ramp => {
+    // Visual ramp
+    const rampMesh = new THREE.Mesh(rampGeometry, rampMaterial);
+    rampMesh.position.copy(ramp.position);
+    rampMesh.rotation.z = ramp.rotation;
+    rampMesh.castShadow = true;
+    rampMesh.receiveShadow = true;
+    scene.add(rampMesh);
+
+    // Physics ramp
+    const rampShape = new CANNON.Box(new CANNON.Vec3(
+        RAMP_DIMENSIONS.length/2,
+        RAMP_DIMENSIONS.height/2,
+        RAMP_DIMENSIONS.width/2
+    ));
+    const rampBody = new CANNON.Body({
+        mass: 0,
+        material: groundPhysMaterial,
+        shape: rampShape,
+        position: new CANNON.Vec3(ramp.position.x, ramp.position.y, ramp.position.z)
+    });
+    rampBody.quaternion.setFromEuler(0, 0, ramp.rotation);
+    world.addBody(rampBody);
 });
-rampBody.quaternion.setFromEuler(0, 0, -RAMP_ANGLE);
-world.addBody(rampBody);
-
-// Create contact material for better ramp interaction
-const rampContactMaterial = new CANNON.ContactMaterial(
-    groundPhysMaterial,
-    wheelMaterial,
-    {
-        friction: 0.5,
-        restitution: 0.3,
-        contactEquationStiffness: 1e8,
-        contactEquationRelaxation: 3
-    }
-);
-world.addContactMaterial(rampContactMaterial);
 
 // Optional: Add guide arrows or markers
 const arrowHelper = new THREE.ArrowHelper(
@@ -298,14 +298,62 @@ scene.add(landingZone);
 
 // Optional: Add spotlights to highlight the ramp
 const spotLight = new THREE.SpotLight(0xffffff, 1);
-spotLight.position.set(-10, 10, 0);
+spotLight.position.set(-20, 10, 0);
 spotLight.angle = Math.PI / 6;
 spotLight.penumbra = 0.5;
 spotLight.decay = 2;
 spotLight.distance = 30;
-spotLight.target = rampMesh;
+
+// Create a target object for the spotlight
+const spotLightTarget = new THREE.Object3D();
+spotLightTarget.position.set(-20, 0, 0);
+scene.add(spotLightTarget);
+spotLight.target = spotLightTarget;
 spotLight.castShadow = true;
 scene.add(spotLight);
+
+// Add more spotlights for other ramps
+const spotLight2 = new THREE.SpotLight(0xffffff, 1);
+spotLight2.position.set(20, 10, 0);
+spotLight2.angle = Math.PI / 6;
+spotLight2.penumbra = 0.5;
+spotLight2.decay = 2;
+spotLight2.distance = 30;
+
+const spotLightTarget2 = new THREE.Object3D();
+spotLightTarget2.position.set(20, 0, 0);
+scene.add(spotLightTarget2);
+spotLight2.target = spotLightTarget2;
+spotLight2.castShadow = true;
+scene.add(spotLight2);
+
+const spotLight3 = new THREE.SpotLight(0xffffff, 1);
+spotLight3.position.set(0, 10, 20);
+spotLight3.angle = Math.PI / 6;
+spotLight3.penumbra = 0.5;
+spotLight3.decay = 2;
+spotLight3.distance = 30;
+
+const spotLightTarget3 = new THREE.Object3D();
+spotLightTarget3.position.set(0, 0, 20);
+scene.add(spotLightTarget3);
+spotLight3.target = spotLightTarget3;
+spotLight3.castShadow = true;
+scene.add(spotLight3);
+
+const spotLight4 = new THREE.SpotLight(0xffffff, 1);
+spotLight4.position.set(0, 10, -20);
+spotLight4.angle = Math.PI / 6;
+spotLight4.penumbra = 0.5;
+spotLight4.decay = 2;
+spotLight4.distance = 30;
+
+const spotLightTarget4 = new THREE.Object3D();
+spotLightTarget4.position.set(0, 0, -20);
+scene.add(spotLightTarget4);
+spotLight4.target = spotLightTarget4;
+spotLight4.castShadow = true;
+scene.add(spotLight4);
 
 // Load the car model
 const loader = new GLTFLoader();

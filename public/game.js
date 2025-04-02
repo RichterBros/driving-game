@@ -6,9 +6,8 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js'
 const FORWARD_FORCE = 500;
 const BACKWARD_FORCE = -500;
 const WHEEL_ROTATION_SPEED = 20;
-const ACCELERATION_RATE = 0.1;      // How quickly the car speeds up
 const DECELERATION_RATE = 0.05;     // How quickly the car slows down
-const MAX_SPEED = 3.0;              // Maximum speed multiplier
+const MAX_SPEED = 1.0;              // Maximum speed multiplier
 const MIN_SPEED = 0.0;              // Minimum speed multiplier
 const RAMP_ANGLE = Math.PI / 6;  // 30 degrees
 const RAMP_DIMENSIONS = {
@@ -17,8 +16,16 @@ const RAMP_DIMENSIONS = {
     length: 8    // Length of the ramp
 };
 
+// Add these constants for car movement
+const MOVE_SPEED = 0.1;
+const TURN_SPEED = 0.03;
+const BRAKE_RATE = 0.01;
+
 // Declare variables at the top
 let carMesh = null;
+let carBody = null;
+let currentSpeed = 0;
+let currentRotation = 0;
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -52,7 +59,7 @@ scene.add(dirLight);
 
 // Physics World
 const world = new CANNON.World();
-world.gravity.set(0, -9.82, 0);
+world.gravity.set(0, -30, 0);  // Increased gravity
 world.solver.iterations = 10;
 world.solver.tolerance = 0.001;
 world.defaultContactMaterial.friction = 0.001;
@@ -80,12 +87,13 @@ const frontWheels = [];
 const backWheels = [];
 
 // Physics Materials
-const groundMaterial = new CANNON.Material('ground');
+const groundPhysMaterial = new CANNON.Material('ground');
 const wheelMaterial = new CANNON.Material('wheel');
+const carPhysMaterial = new CANNON.Material('car');
 
 // Contact material
 const wheelGroundContact = new CANNON.ContactMaterial(
-    groundMaterial,
+    groundPhysMaterial,
     wheelMaterial,
     {
         friction: 0.8,
@@ -99,7 +107,7 @@ world.addContactMaterial(wheelGroundContact);
 // Ground body
 const groundBody = new CANNON.Body({
     mass: 0,
-    material: groundMaterial,
+    material: groundPhysMaterial,
     shape: new CANNON.Plane(),
     position: new CANNON.Vec3(0, 0, 0)
 });
@@ -146,17 +154,17 @@ const rampShape = new CANNON.Box(new CANNON.Vec3(
     RAMP_DIMENSIONS.width/2
 ));
 const rampBody = new CANNON.Body({
-    mass: 0,  // Static body
-    material: groundMaterial,
+    mass: 0,
+    material: groundPhysMaterial,
     shape: rampShape,
     position: new CANNON.Vec3(-10, RAMP_DIMENSIONS.height/2, 0)
 });
-rampBody.quaternion.setFromEuler(-0, 0, -RAMP_ANGLE);  // Match visual rotation
+rampBody.quaternion.setFromEuler(0, 0, -RAMP_ANGLE);
 world.addBody(rampBody);
 
 // Create contact material for better ramp interaction
 const rampContactMaterial = new CANNON.ContactMaterial(
-    groundMaterial,
+    groundPhysMaterial,
     wheelMaterial,
     {
         friction: 0.5,
@@ -225,115 +233,79 @@ spotLight.target = rampMesh;
 spotLight.castShadow = true;
 scene.add(spotLight);
 
-// Car body - PHYSICS
-const carBody = new CANNON.Body({
-    mass: 1500,
-    material: wheelMaterial,
-    shape: new CANNON.Box(new CANNON.Vec3(carDimensions.length/2, carDimensions.height/2, carDimensions.width/2)),
-    position: new CANNON.Vec3(0, 3, 0),
-    angularDamping: 0.5,
-    linearDamping: 0.5
-});
-world.addBody(carBody);
-
-// Car body - VISUAL
-const loader = new GLTFLoader();
-
 // Load the car model
+const loader = new GLTFLoader();
 loader.load(
     '/car2.glb',
     function (gltf) {
         carMesh = gltf.scene;
-        carMesh.position.set(0, 2, 0);
+        carMesh.position.set(0, 3, 0);
+        carMesh.scale.set(0.5, 0.5, 0.5);
+        
+        carMesh.rotation.y = Math.PI;
+        
+        // Adjusted car physics body
+        const carShape = new CANNON.Box(new CANNON.Vec3(1, 0.3, 2)); // Made car lower
+        carBody = new CANNON.Body({
+            mass: 2000,              // Increased mass
+            material: carPhysMaterial,
+            shape: carShape,
+            position: new CANNON.Vec3(0, 3, 0),
+            angularDamping: 0.5,     // Reduced to allow more rotation
+            linearDamping: 0.3,
+            fixedRotation: false,    // Allow rotation from collisions
+            allowSleep: false        // Never let the body sleep
+        });
+        
+        carBody.quaternion.setFromEuler(0, Math.PI, 0);
+        
+        // Lower center of mass more
+        carBody.shapeOffsets[0].y = -0.3;
+        carBody.updateMassProperties();
+        
+        world.addBody(carBody);
         scene.add(carMesh);
-        console.log('Model loaded successfully');
+        
+        console.log('Car loaded successfully');
     },
     function (xhr) {
         console.log((xhr.loaded / xhr.total * 100) + '% loaded');
     },
     function (error) {
-        console.error('Error loading model:', error);
+        console.error('Error loading car:', error);
     }
 );
 
 // Wheel geometry and material for visual wheels
-const wheelGeometry = new THREE.CylinderGeometry(
-    carDimensions.wheelRadius,
-    carDimensions.wheelRadius,
-    carDimensions.width * 0.2,
-    32
-);
-wheelGeometry.rotateZ(Math.PI / 2);
-const wheelVisualMaterial = new THREE.MeshStandardMaterial({ color: 0x202020 });
+
 
 // Create wheels
-wheelPositions.forEach((pos, index) => {
-    // Create wheel physics body
-    const wheelBody = new CANNON.Body({
-        mass: 50,
-        material: wheelMaterial,
-        shape: new CANNON.Sphere(carDimensions.wheelRadius),
-        position: new CANNON.Vec3(
-            carBody.position.x + pos.x,
-            carBody.position.y + pos.y,
-            carBody.position.z + pos.z
-        ),
-        angularDamping: 0.4,
-        linearDamping: 0.4
-    });
-    
-    world.addBody(wheelBody);
-    wheelBodies.push(wheelBody);
+
 
     // Create wheel visual mesh
-    const wheelMesh = new THREE.Mesh(wheelGeometry, wheelVisualMaterial);
-    wheelMesh.castShadow = true;
-    scene.add(wheelMesh);
-    wheelMeshes.push(wheelMesh);
+   
 
-    // Store wheels in their respective arrays
-    if (index < 2) {
-        frontWheels.push(wheelBody);
-    } else {
-        backWheels.push(wheelBody);
-    }
+   
 
     // Connect wheel to car
-    const constraint = new CANNON.HingeConstraint(carBody, wheelBody, {
-        pivotA: new CANNON.Vec3(pos.x, pos.y, pos.z),
-        axisA: new CANNON.Vec3(0, 0, 1),
-        maxForce: 1e6
-    });
-    world.addConstraint(constraint);
-});
 
-// Connect wheels on each axle
-function connectWheels(wheel1, wheel2) {
-    const constraint = new CANNON.DistanceConstraint(wheel1, wheel2, 2.4);
-    world.addConstraint(constraint);
-}
 
-// Connect front and back axles
-connectWheels(frontWheels[0], frontWheels[1]);
-connectWheels(backWheels[0], backWheels[1]);
-
-// Keyboard controls
+// Add keyboard state tracking
 const keysPressed = {
     w: false,
     s: false,
     a: false,
-    d: false,
-    e: false  // Added for hop
+    d: false
 };
 
 // Add keyboard event listeners
 document.addEventListener('keydown', (event) => {
+    console.log('Key pressed:', event.key);
     switch(event.key.toLowerCase()) {
         case 'w': keysPressed.w = true; break;
         case 's': keysPressed.s = true; break;
         case 'a': keysPressed.a = true; break;
         case 'd': keysPressed.d = true; break;
-        case 'e': keysPressed.e = true; break;
     }
 });
 
@@ -343,15 +315,14 @@ document.addEventListener('keyup', (event) => {
         case 's': keysPressed.s = false; break;
         case 'a': keysPressed.a = false; break;
         case 'd': keysPressed.d = false; break;
-        case 'e': keysPressed.e = false; break;
     }
 });
 
-// Update physics world properties to match sphere behavior
-world.gravity.set(0, -9.82, 0);
-world.solver.iterations = 20;
-world.defaultContactMaterial.contactEquationStiffness = 1e8;
-world.defaultContactMaterial.contactEquationRelaxation = 3;
+// Update physics world properties
+world.gravity.set(0, -30, 0);  // Increased gravity
+world.defaultContactMaterial.friction = 0.001;
+world.solver.iterations = 10;
+world.broadphase = new CANNON.NaiveBroadphase();
 
 // Add jump constants
 const JUMP_FORCE = 15000;
@@ -389,98 +360,41 @@ const timeStep = 1/60;
 function animate() {
     requestAnimationFrame(animate);
     
-    // Only try to update the car if it's loaded
-    if (carMesh) {
-        // Update car position and rotation
+    world.step(1/60);
+    
+    if (carMesh && carBody) {
+        if (keysPressed.w) {
+            const force = new CANNON.Vec3(0, 0, 40000); // Increased force
+            carBody.applyLocalForce(force, new CANNON.Vec3(0, 0, 0));
+        }
+        if (keysPressed.s) {
+            const force = new CANNON.Vec3(0, 0, -40000); // Increased force
+            carBody.applyLocalForce(force, new CANNON.Vec3(0, 0, 0));
+        }
+        
+        // Improved turning
+        if (keysPressed.a) {
+            carBody.angularVelocity.set(0, 2, 0);  // Increased turning speed
+        } else if (keysPressed.d) {
+            carBody.angularVelocity.set(0, -2, 0); // Increased turning speed
+        } else {
+            carBody.angularVelocity.scale(0.85);   // Quicker rotation stop
+        }
+
+        // Only keep car upright if not in collision
+        const velocity = carBody.velocity.length();
+        if (velocity < 1) {
+            // Keep car upright when moving slowly
+            const carRotation = new CANNON.Vec3();
+            carBody.quaternion.toEuler(carRotation);
+            carBody.quaternion.setFromEuler(0, carRotation.y, 0);
+        }
+
+        // Update visual mesh
         carMesh.position.copy(carBody.position);
         carMesh.quaternion.copy(carBody.quaternion);
     }
 
-    // Handle acceleration and deceleration
-    if (keysPressed.w) {
-        // Accelerate while W is held
-        speedMultiplier = Math.min(speedMultiplier + ACCELERATION_RATE, MAX_SPEED);
-    } else {
-        // Decelerate when W is released
-        speedMultiplier = Math.max(speedMultiplier - DECELERATION_RATE, MIN_SPEED);
-    }
-
-    // Apply damping to wheel rotation when no input
-    if (!keysPressed.w && !keysPressed.s) {
-        wheelBodies.forEach(wheel => {
-            wheel.angularVelocity.scale(0.95);
-        });
-    }
-
-    // Forward movement with acceleration
-    if (keysPressed.w) {
-        const currentForce = FORWARD_FORCE * speedMultiplier;
-        const currentRotation = WHEEL_ROTATION_SPEED * speedMultiplier;
-        
-        backWheels.forEach(wheel => {
-            wheel.applyLocalForce(new CANNON.Vec3(currentForce, 0, 0), new CANNON.Vec3(0, 0, 0));
-            wheel.angularVelocity.set(0, 0, -currentRotation);
-        });
-        frontWheels.forEach(wheel => {
-            wheel.angularVelocity.set(0, 0, -currentRotation);
-        });
-    }
-
-    // Backward movement (keeping it simple for now)
-    if (keysPressed.s) {
-        backWheels.forEach(wheel => {
-            wheel.applyLocalForce(new CANNON.Vec3(BACKWARD_FORCE, 0, 0), new CANNON.Vec3(0, 0, 0));
-            wheel.angularVelocity.set(0, 0, WHEEL_ROTATION_SPEED);
-        });
-        frontWheels.forEach(wheel => {
-            wheel.angularVelocity.set(0, 0, WHEEL_ROTATION_SPEED);
-        });
-    }
-
-    // Handle steering
-    if (keysPressed.a || keysPressed.d) {
-        const steeringAngle = keysPressed.a ? Math.PI / 6 : -Math.PI / 6;
-        
-        // Create quaternion for steering
-        const steeringQuaternion = new CANNON.Quaternion();
-        steeringQuaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), steeringAngle);
-        
-        // Apply steering to front wheels
-        const baseRotation = new CANNON.Quaternion();
-        baseRotation.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI / 2);
-        
-        const finalRotation = steeringQuaternion.mult(baseRotation);
-        wheelBodies[0].quaternion.copy(finalRotation);
-        wheelBodies[1].quaternion.copy(finalRotation);
-    }
-
-    // Handle hop
-    if (keysPressed.e) {
-        const currentTime = Date.now();
-        if (currentTime - lastJumpTime > JUMP_COOLDOWN) {
-            // Apply upward force to car body
-            carBody.applyLocalImpulse(
-                new CANNON.Vec3(0, JUMP_FORCE, 0),
-                new CANNON.Vec3(0, 0, 0)
-            );
-            lastJumpTime = currentTime;
-        }
-    }
-
-    // Update physics
-    world.step(1/60);
-
-    // Update visuals
-    wheelBodies.forEach((wheelBody, i) => {
-        wheelMeshes[i].position.copy(wheelBody.position);
-        wheelMeshes[i].quaternion.copy(wheelBody.quaternion);
-    });
-
-    // Update sphere position
-    sphereMesh.position.copy(sphereBody.position);
-    sphereMesh.quaternion.copy(sphereBody.quaternion);
-
-    controls.update();
     renderer.render(scene, camera);
 }
 
@@ -491,4 +405,24 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// Function to remove specific objects
+function removeWheels() {
+    const objectsToRemove = [];
+    scene.traverse((object) => {
+        // Check if the object is one of the old wheels
+        if (object.name.includes('wheel') || 
+            (object.geometry && object.geometry.type === 'CylinderGeometry')) {
+            objectsToRemove.push(object);
+        }
+    });
+    
+    objectsToRemove.forEach((object) => {
+        scene.remove(object);
+    });
+}
+
+// Remove the wheels
+removeWheels();
+
+// Start animation
 animate();

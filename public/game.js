@@ -498,6 +498,10 @@ spherePositions.forEach(pos => {
 // Add this variable with your other declarations
 let speedMultiplier = 0;
 
+// Add these variables near the top with other declarations
+let cameraOffset = new THREE.Vector3(0, 10, 15); // Camera position relative to car
+let cameraLerpFactor = 0.1; // How quickly camera follows (0-1, lower = more lag)
+
 // Animation loop
 const timeStep = 1/60;
 function animate() {
@@ -610,6 +614,15 @@ function animate() {
 
     // Update smoke
     updateSmoke();
+
+    // Camera look at car from fixed position
+    if (carMesh && carBody) {
+        // Keep camera in fixed position
+        camera.position.set(0, 15, 25); // Lower height for a closer view
+        
+        // Make camera look at car
+        camera.lookAt(carMesh.position);
+    }
 
     renderer.render(scene, camera);
 }

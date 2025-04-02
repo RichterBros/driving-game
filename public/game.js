@@ -25,10 +25,21 @@ const ACCELERATION = 1000;  // How quickly the car speeds up
 const DECELERATION = 500;   // How quickly the car slows down
 
 // Add these constants for bullets
-const BULLET_RADIUS = 0.1;
+const BULLET_RADIUS = 0.3;  // Increased from 0.1 to 0.3 for bigger bullets
 const BULLET_SPEED = 50;
 const BULLET_LIFETIME = 2000; // 2 seconds
 const BULLET_COOLDOWN = 100; // milliseconds between shots
+
+// Add these constants for smoke particles
+const SMOKE_PARTICLES = 10;  // Number of particles per shot
+const SMOKE_LIFETIME = 500; // Reduced from 1000 to 500ms for faster fade out
+const SMOKE_SPREAD = 2.0;    // Increased from 0.5 to 2.0 for wider spread
+
+// Add skid mark constants
+const SKID_MARK_PARTICLES = 5;  // Number of particles per skid mark
+const SKID_MARK_LIFETIME = 2000; // How long skid marks last (ms)
+const SKID_MARK_SPREAD = 0.2;    // Reduced from 0.5 to 0.2 for tighter spread
+const SKID_MARK_THRESHOLD = 0.5;  // Minimum angular velocity to create skid marks
 
 // Declare variables at the top
 let carMesh = null;
@@ -40,6 +51,28 @@ let targetSpeed = 0;
 // Add these variables for bullet management
 let bullets = [];
 let lastBulletTime = 0;
+
+// Add this with other variables at the top
+let smokeParticles = [];
+
+// Add this after other material definitions
+const smokeGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+const smokeMaterial = new THREE.MeshStandardMaterial({
+    color: 0x888888,
+    transparent: true,
+    opacity: 0.8,
+    roughness: 0.9,
+    metalness: 0.1
+});
+
+// Add skid mark material
+const skidMarkMaterial = new THREE.MeshStandardMaterial({
+    color: 0x333333,
+    transparent: true,
+    opacity: 0.8,
+    roughness: 0.9,
+    metalness: 0.1
+});
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -380,21 +413,39 @@ const sphereMaterial = new THREE.MeshStandardMaterial({
     color: 0xff0000,
     wireframe: false 
 });
-const sphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
-sphereMesh.castShadow = true;
-sphereMesh.position.set(5, 10, 5); // Position it above and to the side of the car
-scene.add(sphereMesh);
 
-// Create sphere physics body
-const sphereBody = new CANNON.Body({
-    mass: 5,
-    material: spherePhysMaterial,  // Use the new sphere material
-    shape: new CANNON.Sphere(sphereRadius),
-    position: new CANNON.Vec3(5, 10, 5),
-    linearDamping: 0.2,  // Reduced damping for more movement
-    angularDamping: 0.2  // Reduced damping for more rotation
+// Create arrays to store multiple spheres
+const sphereMeshes = [];
+const sphereBodies = [];
+
+// Create 5 spheres at different positions
+const spherePositions = [
+    { x: 5, y: 10, z: 5 },    // Original position
+    { x: -5, y: 10, z: 5 },   // Left side
+    { x: 5, y: 10, z: -5 },   // Back
+    { x: -5, y: 10, z: -5 },  // Back left
+    { x: 0, y: 10, z: 0 }     // Center
+];
+
+// Create all spheres
+spherePositions.forEach(pos => {
+    const sphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    sphereMesh.castShadow = true;
+    sphereMesh.position.set(pos.x, pos.y, pos.z);
+    scene.add(sphereMesh);
+    sphereMeshes.push(sphereMesh);
+
+    const sphereBody = new CANNON.Body({
+        mass: 5,
+        material: spherePhysMaterial,
+        shape: new CANNON.Sphere(sphereRadius),
+        position: new CANNON.Vec3(pos.x, pos.y, pos.z),
+        linearDamping: 0.2,
+        angularDamping: 0.2
+    });
+    world.addBody(sphereBody);
+    sphereBodies.push(sphereBody);
 });
-world.addBody(sphereBody);
 
 // Add this variable with your other declarations
 let speedMultiplier = 0;
@@ -474,19 +525,43 @@ function animate() {
                     carMesh.position.z + spawnOffset.z
                 );
 
+                // Create smoke effect
+                createSmokeEffect(spawnPosition);
+
                 // Create and add new bullet
                 bullets.push(createBullet(spawnPosition, carDirection));
                 lastBulletTime = currentTime;
             }
+        }
+
+        // Add skid mark creation during turns
+        const angularVelocity = carBody.angularVelocity.y;
+        if (Math.abs(angularVelocity) > SKID_MARK_THRESHOLD) {
+            // Get car's rear position
+            const rearOffset = new THREE.Vector3(0, 0, -2); // 2 units behind the car's center
+            rearOffset.applyQuaternion(carMesh.quaternion);
+            const rearPosition = new THREE.Vector3(
+                carBody.position.x + rearOffset.x,
+                carBody.position.y + rearOffset.y,
+                carBody.position.z + rearOffset.z
+            );
+            
+            // Create skid marks at the rear
+            createSkidMark(rearPosition);
         }
     }
 
     // Update bullets
     updateBullets();
 
-    // Update sphere position
-    sphereMesh.position.copy(sphereBody.position);
-    sphereMesh.quaternion.copy(sphereBody.quaternion);
+    // Update all sphere positions
+    sphereMeshes.forEach((mesh, index) => {
+        mesh.position.copy(sphereBodies[index].position);
+        mesh.quaternion.copy(sphereBodies[index].quaternion);
+    });
+
+    // Update smoke
+    updateSmoke();
 
     renderer.render(scene, camera);
 }
@@ -591,4 +666,95 @@ function updateBullets() {
         bullet.mesh.position.copy(bullet.body.position);
         bullet.mesh.quaternion.copy(bullet.body.quaternion);
     });
+}
+
+// Add this function before the animation loop
+function createSmokeEffect(position) {
+    for (let i = 0; i < SMOKE_PARTICLES; i++) {
+        const particle = new THREE.Mesh(smokeGeometry, smokeMaterial.clone());
+        particle.position.copy(position);
+        
+        // Random spread
+        particle.position.x += (Math.random() - 0.5) * SMOKE_SPREAD;
+        particle.position.y += (Math.random() - 0.5) * SMOKE_SPREAD;
+        particle.position.z += (Math.random() - 0.5) * SMOKE_SPREAD;
+        
+        // Random rotation
+        particle.rotation.x = Math.random() * Math.PI;
+        particle.rotation.y = Math.random() * Math.PI;
+        particle.rotation.z = Math.random() * Math.PI;
+        
+        scene.add(particle);
+        
+        smokeParticles.push({
+            mesh: particle,
+            time: Date.now(),
+            velocity: new THREE.Vector3(
+                (Math.random() - 0.5) * 0.2,
+                Math.random() * 0.2,
+                (Math.random() - 0.5) * 0.2
+            )
+        });
+    }
+}
+
+// Add this function before the animation loop
+function updateSmoke() {
+    const currentTime = Date.now();
+    
+    smokeParticles = smokeParticles.filter(particle => {
+        const age = currentTime - particle.time;
+        const lifetime = particle.isSkidMark ? SKID_MARK_LIFETIME : SMOKE_LIFETIME;
+        
+        if (age >= lifetime) {
+            scene.remove(particle.mesh);
+            return false;
+        }
+        
+        // Update position
+        particle.mesh.position.add(particle.velocity);
+        
+        // Update opacity
+        const opacity = 1 - (age / lifetime);
+        particle.mesh.material.opacity = opacity;
+        
+        // Update size - skid marks stay smaller and more consistent
+        const size = particle.isSkidMark ? 
+            0.2 + (age / lifetime) * 0.1 : // Skid marks
+            0.3 + (age / lifetime) * 0.6;  // Smoke
+        particle.mesh.scale.set(size, size, size);
+        
+        return true;
+    });
+}
+
+// Add this function for creating skid marks
+function createSkidMark(position) {
+    for (let i = 0; i < SKID_MARK_PARTICLES; i++) {
+        const particle = new THREE.Mesh(smokeGeometry, skidMarkMaterial.clone());
+        particle.position.copy(position);
+        
+        // Random spread along the ground - reduced spread
+        particle.position.x += (Math.random() - 0.5) * SKID_MARK_SPREAD;
+        particle.position.y = 0.1; // Slightly above ground to prevent z-fighting
+        particle.position.z += (Math.random() - 0.5) * SKID_MARK_SPREAD;
+        
+        // Random rotation
+        particle.rotation.x = Math.random() * Math.PI;
+        particle.rotation.y = Math.random() * Math.PI;
+        particle.rotation.z = Math.random() * Math.PI;
+        
+        scene.add(particle);
+        
+        smokeParticles.push({
+            mesh: particle,
+            time: Date.now(),
+            velocity: new THREE.Vector3(
+                (Math.random() - 0.5) * 0.05,  // Reduced from 0.1 to 0.05
+                0, // No vertical movement
+                (Math.random() - 0.5) * 0.05   // Reduced from 0.1 to 0.05
+            ),
+            isSkidMark: true
+        });
+    }
 }

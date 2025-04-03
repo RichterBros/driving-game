@@ -227,17 +227,17 @@ groundMesh.rotation.x = -Math.PI / 2;
 scene.add(groundMesh);
 
 // Create a small grey plane 5 units above the ground
-const smallPlaneGeometry = new THREE.PlaneGeometry(10, 10, 32, 32); // Increased segments for better detail
+const smallPlaneGeometry = new THREE.PlaneGeometry(40, 40, 64, 64); // Increased segments for better detail
 const smallPlaneMaterial = new THREE.MeshStandardMaterial({ 
     color: 0x888888, // Grey color
     roughness: 0.7,
     metalness: 0.2,
-    displacementScale: 0.5, // Subtle height variation
-    displacementMap: createSimpleNoiseTexture(256, 256, 0.5, 2),
-    normalMap: createSimpleNormalMap(256, 256, 0.5, 2)
+    displacementScale: 2.0, // Increased from 0.5 to 2.0 for more pronounced height variation
+    displacementMap: createSimpleNoiseTexture(512, 512, 0.3, 4), // Increased resolution and octaves
+    normalMap: createSimpleNormalMap(512, 512, 0.3, 4) // Increased resolution and octaves
 });
 const smallPlaneMesh = new THREE.Mesh(smallPlaneGeometry, smallPlaneMaterial);
-smallPlaneMesh.position.set(0, 5, 0); // Position 5 units above the ground
+smallPlaneMesh.position.set(0, 0.1, 0); // Position just above the ground (0.1 units)
 smallPlaneMesh.rotation.x = -Math.PI / 2; // Rotate to be horizontal
 smallPlaneMesh.castShadow = true;
 smallPlaneMesh.receiveShadow = true;
@@ -247,8 +247,8 @@ scene.add(smallPlaneMesh);
 const smallPlaneBody = new CANNON.Body({
     mass: 0, // Static body
     material: groundPhysMaterial,
-    shape: new CANNON.Box(new CANNON.Vec3(5, 0.1, 5)), // Half-extents of the box
-    position: new CANNON.Vec3(0, 5, 0) // Position it at the same height as the visual plane
+    shape: new CANNON.Box(new CANNON.Vec3(20, 0.1, 20)), // Increased from 5 to 20 (half-extents)
+    position: new CANNON.Vec3(0, 0.1, 0) // Position it just above the ground
 });
 world.addBody(smallPlaneBody);
 
@@ -893,7 +893,7 @@ function createSimpleNoiseTexture(width, height, scale, octaves) {
     const imageData = ctx.createImageData(width, height);
     const data = imageData.data;
     
-    // Generate noise
+    // Generate base noise
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             let value = 0;
@@ -916,6 +916,45 @@ function createSimpleNoiseTexture(width, height, scale, octaves) {
             data[index + 1] = value * 255;
             data[index + 2] = value * 255;
             data[index + 3] = 255;
+        }
+    }
+    
+    // Add random hills
+    const numHills = 15; // Number of random hills to add
+    for (let i = 0; i < numHills; i++) {
+        // Random hill position
+        const hillX = Math.floor(Math.random() * width);
+        const hillY = Math.floor(Math.random() * height);
+        const hillRadius = Math.random() * 20 + 10; // Random radius between 10-30 pixels
+        const hillHeight = Math.random() * 0.7 + 0.3; // Random height between 0.3-1.0
+        
+        // Draw the hill
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                // Calculate distance from hill center
+                const dx = x - hillX;
+                const dy = y - hillY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                // If within hill radius, add height
+                if (distance < hillRadius) {
+                    // Smooth falloff from center
+                    const falloff = 1 - (distance / hillRadius);
+                    const hillValue = falloff * falloff * hillHeight; // Square for more natural shape
+                    
+                    // Get current pixel value
+                    const index = (y * width + x) * 4;
+                    const currentValue = data[index] / 255;
+                    
+                    // Add hill height to current value, but don't exceed 1.0
+                    const newValue = Math.min(currentValue + hillValue, 1.0);
+                    
+                    // Update pixel
+                    data[index] = newValue * 255;
+                    data[index + 1] = newValue * 255;
+                    data[index + 2] = newValue * 255;
+                }
+            }
         }
     }
     
@@ -952,6 +991,36 @@ function createSimpleNormalMap(width, height, scale, octaves) {
             }
             
             noiseData[y][x] = (value + 1) / 2;
+        }
+    }
+    
+    // Add random hills to the noise data
+    const numHills = 15; // Same number as in the displacement map
+    for (let i = 0; i < numHills; i++) {
+        // Random hill position
+        const hillX = Math.floor(Math.random() * width);
+        const hillY = Math.floor(Math.random() * height);
+        const hillRadius = Math.random() * 20 + 10; // Random radius between 10-30 pixels
+        const hillHeight = Math.random() * 0.7 + 0.3; // Random height between 0.3-1.0
+        
+        // Draw the hill
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                // Calculate distance from hill center
+                const dx = x - hillX;
+                const dy = y - hillY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                // If within hill radius, add height
+                if (distance < hillRadius) {
+                    // Smooth falloff from center
+                    const falloff = 1 - (distance / hillRadius);
+                    const hillValue = falloff * falloff * hillHeight; // Square for more natural shape
+                    
+                    // Add hill height to current value, but don't exceed 1.0
+                    noiseData[y][x] = Math.min(noiseData[y][x] + hillValue, 1.0);
+                }
+            }
         }
     }
     

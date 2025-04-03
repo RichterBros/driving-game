@@ -227,11 +227,14 @@ groundMesh.rotation.x = -Math.PI / 2;
 scene.add(groundMesh);
 
 // Create a small grey plane 5 units above the ground
-const smallPlaneGeometry = new THREE.PlaneGeometry(10, 10); // 10x10 units
+const smallPlaneGeometry = new THREE.PlaneGeometry(10, 10, 32, 32); // Increased segments for better detail
 const smallPlaneMaterial = new THREE.MeshStandardMaterial({ 
     color: 0x888888, // Grey color
     roughness: 0.7,
-    metalness: 0.2
+    metalness: 0.2,
+    displacementScale: 0.5, // Subtle height variation
+    displacementMap: createSimpleNoiseTexture(256, 256, 0.5, 2),
+    normalMap: createSimpleNormalMap(256, 256, 0.5, 2)
 });
 const smallPlaneMesh = new THREE.Mesh(smallPlaneGeometry, smallPlaneMaterial);
 smallPlaneMesh.position.set(0, 5, 0); // Position 5 units above the ground
@@ -879,4 +882,113 @@ function createSkidMark(position) {
             isSkidMark: true
         });
     }
+}
+
+// Function to create a simple noise texture for displacement
+function createSimpleNoiseTexture(width, height, scale, octaves) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.createImageData(width, height);
+    const data = imageData.data;
+    
+    // Generate noise
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            let value = 0;
+            let amplitude = 1;
+            let frequency = 1;
+            
+            // Create octaves of noise
+            for (let i = 0; i < octaves; i++) {
+                value += amplitude * Math.sin(x * frequency / scale) * Math.cos(y * frequency / scale);
+                amplitude *= 0.5;
+                frequency *= 2;
+            }
+            
+            // Normalize to 0-1 range
+            value = (value + 1) / 2;
+            
+            // Set pixel value (grayscale)
+            const index = (y * width + x) * 4;
+            data[index] = value * 255;
+            data[index + 1] = value * 255;
+            data[index + 2] = value * 255;
+            data[index + 3] = 255;
+        }
+    }
+    
+    ctx.putImageData(imageData, 0, 0);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    return texture;
+}
+
+// Function to create a simple normal map
+function createSimpleNormalMap(width, height, scale, octaves) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.createImageData(width, height);
+    const data = imageData.data;
+    
+    // Generate noise for normal map
+    const noiseData = [];
+    for (let y = 0; y < height; y++) {
+        noiseData[y] = [];
+        for (let x = 0; x < width; x++) {
+            let value = 0;
+            let amplitude = 1;
+            let frequency = 1;
+            
+            for (let i = 0; i < octaves; i++) {
+                value += amplitude * Math.sin(x * frequency / scale) * Math.cos(y * frequency / scale);
+                amplitude *= 0.5;
+                frequency *= 2;
+            }
+            
+            noiseData[y][x] = (value + 1) / 2;
+        }
+    }
+    
+    // Calculate normal map
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const x1 = (x + 1) % width;
+            const y1 = (y + 1) % height;
+            
+            const h00 = noiseData[y][x];
+            const h10 = noiseData[y][x1];
+            const h01 = noiseData[y1][x];
+            
+            // Calculate normal using central differences
+            const dx = (h10 - h00) * 2;
+            const dy = (h01 - h00) * 2;
+            const dz = 1;
+            
+            // Normalize
+            const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            const nx = dx / length;
+            const ny = dy / length;
+            const nz = dz / length;
+            
+            // Convert to RGB (normal map format)
+            const index = (y * width + x) * 4;
+            data[index] = (nx + 1) / 2 * 255;     // R
+            data[index + 1] = (ny + 1) / 2 * 255; // G
+            data[index + 2] = (nz + 1) / 2 * 255; // B
+            data[index + 3] = 255;                 // A
+        }
+    }
+    
+    ctx.putImageData(imageData, 0, 0);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    return texture;
 }

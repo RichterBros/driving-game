@@ -1,3 +1,4 @@
+
 import * as THREE from 'three'
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js'
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js'
@@ -387,7 +388,7 @@ loader.load(
     '/car2.glb',
     function (gltf) {
         carMesh = gltf.scene;
-        carMesh.position.set(200, 15, 30); // Moved car 200 units to the right
+        carMesh.position.set(0, 3, 0);
         carMesh.scale.set(0.5, 0.5, 0.5);
         
         // Enable shadows for the car and all its meshes
@@ -401,29 +402,26 @@ loader.load(
         carMesh.rotation.y = Math.PI;
         
         // Adjusted car physics body
-        const carShape = new CANNON.Box(new CANNON.Vec3(1, 0.3, 2));
+        const carShape = new CANNON.Box(new CANNON.Vec3(1, 0.3, 2)); // Made car lower
         carBody = new CANNON.Body({
-            mass: 2000,
+            mass: 2000,              // Increased mass
             material: carPhysMaterial,
             shape: carShape,
-            position: new CANNON.Vec3(200, 15, 30), // Match the visual position
-            angularDamping: 0.5,
+            position: new CANNON.Vec3(0, 3, 0),
+            angularDamping: 0.5,     // Reduced to allow more rotation
             linearDamping: 0.3,
-            fixedRotation: false,
-            allowSleep: false
+            fixedRotation: false,    // Allow rotation from collisions
+            allowSleep: false        // Never let the body sleep
         });
         
         carBody.quaternion.setFromEuler(0, Math.PI, 0);
+        
+        // Lower center of mass more
         carBody.shapeOffsets[0].y = -0.3;
         carBody.updateMassProperties();
         
-        // Add a small delay before adding the car to the physics world
-        // This gives time for the landscape to fully load and stabilize
-        setTimeout(() => {
-            world.addBody(carBody);
-            scene.add(carMesh);
-            console.log('Car added to physics world after delay');
-        }, 1000); // 1 second delay
+        world.addBody(carBody);
+        scene.add(carMesh);
         
         console.log('Car loaded successfully');
     },
@@ -432,35 +430,6 @@ loader.load(
     },
     function (error) {
         console.error('Error loading car:', error);
-    }
-);
-
-// Load the landscape model
-const landscapeLoader = new GLTFLoader();
-landscapeLoader.load(
-    '/landscape.glb',
-    function (gltf) {
-        const landscape = gltf.scene;
-        
-        // Position the landscape 25 units up (moved down 25 units from 50)
-        landscape.position.set(0, 25, 0); // Changed from 50 to 25 to move it down
-        
-        // Enable shadows for all meshes in the landscape
-        landscape.traverse((node) => {
-            if (node.isMesh) {
-                node.castShadow = true;
-                node.receiveShadow = true;
-            }
-        });
-        
-        scene.add(landscape);
-        console.log('Landscape loaded successfully (no collisions enabled)');
-    },
-    function (xhr) {
-        console.log((xhr.loaded / xhr.total * 100) + '% loaded');
-    },
-    function (error) {
-        console.error('Error loading landscape:', error);
     }
 );
 

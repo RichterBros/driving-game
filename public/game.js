@@ -1,4 +1,3 @@
-
 import * as THREE from 'three'
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js'
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js'
@@ -226,6 +225,29 @@ const groundMesh = new THREE.Mesh(groundGeometry, groundVisualMaterial);
 groundMesh.receiveShadow = true;
 groundMesh.rotation.x = -Math.PI / 2;
 scene.add(groundMesh);
+
+// Create a small grey plane 5 units above the ground
+const smallPlaneGeometry = new THREE.PlaneGeometry(10, 10); // 10x10 units
+const smallPlaneMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x888888, // Grey color
+    roughness: 0.7,
+    metalness: 0.2
+});
+const smallPlaneMesh = new THREE.Mesh(smallPlaneGeometry, smallPlaneMaterial);
+smallPlaneMesh.position.set(0, 5, 0); // Position 5 units above the ground
+smallPlaneMesh.rotation.x = -Math.PI / 2; // Rotate to be horizontal
+smallPlaneMesh.castShadow = true;
+smallPlaneMesh.receiveShadow = true;
+scene.add(smallPlaneMesh);
+
+// Add physics body for the small grey plane
+const smallPlaneBody = new CANNON.Body({
+    mass: 0, // Static body
+    material: groundPhysMaterial,
+    shape: new CANNON.Box(new CANNON.Vec3(5, 0.1, 5)), // Half-extents of the box
+    position: new CANNON.Vec3(0, 5, 0) // Position it at the same height as the visual plane
+});
+world.addBody(smallPlaneBody);
 
 // Grid Helper
 const gridHelper = new THREE.GridHelper(500, 50);

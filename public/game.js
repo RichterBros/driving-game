@@ -26,7 +26,7 @@ const DECELERATION = 500;   // How quickly the car slows down
 
 // Add these constants for bullets
 const BULLET_RADIUS = 0.3;  // Increased from 0.1 to 0.3 for bigger bullets
-const BULLET_SPEED = 50;
+const BULLET_SPEED = 50;   // Reduced from 100 to 50 (50% less speed)
 const BULLET_LIFETIME = 2000; // 2 seconds
 const BULLET_COOLDOWN = 100; // milliseconds between shots
 
@@ -99,9 +99,21 @@ controls.dampingFactor = 0.05;
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
 
-const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-dirLight.position.set(10, 10, 10);
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+dirLight.position.set(50, 100, 50);
 dirLight.castShadow = true;
+
+// Improve shadow quality
+dirLight.shadow.mapSize.width = 3072;  // Increased from 2048 to 3072 (50% sharper)
+dirLight.shadow.mapSize.height = 3072; // Increased from 2048 to 3072 (50% sharper)
+dirLight.shadow.camera.near = 0.5;
+dirLight.shadow.camera.far = 500;
+dirLight.shadow.camera.left = -100;
+dirLight.shadow.camera.right = 100;
+dirLight.shadow.camera.top = 100;
+dirLight.shadow.camera.bottom = -100;
+dirLight.shadow.bias = -0.001; // Reduced shadow bias to prevent shadow acne
+
 scene.add(dirLight);
 
 // Physics World
@@ -138,6 +150,7 @@ const groundPhysMaterial = new CANNON.Material('ground');
 const wheelMaterial = new CANNON.Material('wheel');
 const carPhysMaterial = new CANNON.Material('car');
 const spherePhysMaterial = new CANNON.Material('sphere');  // Add sphere material
+const bulletMaterial = new CANNON.Material('bullet');      // Add bullet material
 
 // Contact material
 const wheelGroundContact = new CANNON.ContactMaterial(
@@ -177,6 +190,19 @@ const sphereCarContact = new CANNON.ContactMaterial(
     }
 );
 world.addContactMaterial(sphereCarContact);
+
+// Add contact material for bullets and spheres
+const bulletSphereContact = new CANNON.ContactMaterial(
+    bulletMaterial,
+    spherePhysMaterial,
+    {
+        friction: 0.3,
+        restitution: 0.9,  // Increased from 0.7 to 0.9 for more bouncy collisions
+        contactEquationStiffness: 1e8,
+        contactEquationRelaxation: 3
+    }
+);
+world.addContactMaterial(bulletSphereContact);
 
 // Ground body
 const groundBody = new CANNON.Body({
@@ -363,6 +389,14 @@ loader.load(
         carMesh = gltf.scene;
         carMesh.position.set(0, 3, 0);
         carMesh.scale.set(0.5, 0.5, 0.5);
+        
+        // Enable shadows for the car and all its meshes
+        carMesh.traverse((node) => {
+            if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
+        });
         
         carMesh.rotation.y = Math.PI;
         
@@ -615,10 +649,24 @@ function animate() {
     // Update smoke
     updateSmoke();
 
-    // Camera look at car from fixed position
+    // Camera follow car
     if (carMesh && carBody) {
-        // Keep camera in fixed position
-        camera.position.set(0, 15, 25); // Lower height for a closer view
+        // Calculate target camera position
+        const targetPosition = new THREE.Vector3();
+        targetPosition.copy(carMesh.position);
+        
+        // Get car's rear position (same as skid mark emitter)
+        const rearOffset = new THREE.Vector3(0, 0, -2); // 2 units behind the car's center
+        rearOffset.applyQuaternion(carMesh.quaternion);
+        targetPosition.add(rearOffset);
+        
+        // Add additional offset for camera height and distance
+        const cameraOffset = new THREE.Vector3(0, 5, -8); // Higher and further back
+        cameraOffset.applyQuaternion(carMesh.quaternion);
+        targetPosition.add(cameraOffset);
+        
+        // Smoothly move camera to target position
+        camera.position.lerp(targetPosition, 0.1);
         
         // Make camera look at car
         camera.lookAt(carMesh.position);
@@ -656,22 +704,6 @@ removeWheels();
 // Start animation
 animate();
 
-// Add bullet material
-const bulletMaterial = new CANNON.Material('bullet');
-
-// Add contact material for bullets
-const bulletGroundContact = new CANNON.ContactMaterial(
-    groundPhysMaterial,
-    bulletMaterial,
-    {
-        friction: 0.3,
-        restitution: 0.3,
-        contactEquationStiffness: 1e8,
-        contactEquationRelaxation: 3
-    }
-);
-world.addContactMaterial(bulletGroundContact);
-
 // Function to create a bullet
 function createBullet(position, direction) {
     const bulletGeometry = new THREE.SphereGeometry(BULLET_RADIUS, 8, 8);
@@ -686,17 +718,23 @@ function createBullet(position, direction) {
     scene.add(bulletMesh);
 
     const bulletBody = new CANNON.Body({
-        mass: 0.1,
+        mass: 0.5,  // Increased from 0.1 to 0.5 for more impact force
         material: bulletMaterial,
         shape: new CANNON.Sphere(BULLET_RADIUS),
         position: new CANNON.Vec3(position.x, position.y, position.z),
-        linearDamping: 0.1,
-        angularDamping: 0.1
+        linearDamping: 0.05,
+        angularDamping: 0.05
     });
 
     // Apply initial velocity in the direction the car is facing
     const velocity = new CANNON.Vec3(direction.x, direction.y, direction.z);
     velocity.scale(BULLET_SPEED, bulletBody.velocity);
+    
+    // Add an extra impulse force for more power
+    bulletBody.applyImpulse(
+        new CANNON.Vec3(direction.x, direction.y, direction.z).scale(5),
+        new CANNON.Vec3(0, 0, 0)
+    );
     
     world.addBody(bulletBody);
 

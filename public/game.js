@@ -226,31 +226,35 @@ groundMesh.receiveShadow = true;
 groundMesh.rotation.x = -Math.PI / 2;
 scene.add(groundMesh);
 
-// Create a small grey plane 5 units above the ground
-const smallPlaneGeometry = new THREE.PlaneGeometry(40, 40, 64, 64); // Increased segments for better detail
-const smallPlaneMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x888888, // Grey color
-    roughness: 0.7,
-    metalness: 0.2,
-    displacementScale: 2.0, // Increased from 0.5 to 2.0 for more pronounced height variation
-    displacementMap: createSimpleNoiseTexture(512, 512, 0.3, 4), // Increased resolution and octaves
-    normalMap: createSimpleNormalMap(512, 512, 0.3, 4) // Increased resolution and octaves
-});
-const smallPlaneMesh = new THREE.Mesh(smallPlaneGeometry, smallPlaneMaterial);
-smallPlaneMesh.position.set(0, 0.1, 0); // Position just above the ground (0.1 units)
-smallPlaneMesh.rotation.x = -Math.PI / 2; // Rotate to be horizontal
-smallPlaneMesh.castShadow = true;
-smallPlaneMesh.receiveShadow = true;
-scene.add(smallPlaneMesh);
+// Load the landscape model
+const landscapeLoader = new GLTFLoader();
+let landscapeMesh = null;
 
-// Add physics body for the small grey plane
-const smallPlaneBody = new CANNON.Body({
-    mass: 0, // Static body
-    material: groundPhysMaterial,
-    shape: new CANNON.Box(new CANNON.Vec3(20, 0.1, 20)), // Increased from 5 to 20 (half-extents)
-    position: new CANNON.Vec3(0, 0.1, 0) // Position it just above the ground
-});
-world.addBody(smallPlaneBody);
+landscapeLoader.load(
+    '/landscape.glb',
+    function (gltf) {
+        landscapeMesh = gltf.scene;
+        landscapeMesh.position.set(0, 0, 0);
+        landscapeMesh.scale.set(1, 1, 1);
+        
+        // Enable shadows for the landscape and all its meshes
+        landscapeMesh.traverse((node) => {
+            if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
+        });
+        
+        scene.add(landscapeMesh);
+        console.log('Landscape loaded successfully');
+    },
+    function (xhr) {
+        console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+    },
+    function (error) {
+        console.error('Error loading landscape:', error);
+    }
+);
 
 // Grid Helper
 const gridHelper = new THREE.GridHelper(500, 50);

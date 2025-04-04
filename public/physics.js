@@ -6,7 +6,7 @@ export const physicsWorld = {
     async init() {
         await RAPIER.init();
         
-        const gravity = new RAPIER.Vector3(0, -9.81, 0);
+        const gravity = new RAPIER.Vector3(0, -20.0, 0);
         world = new RAPIER.World(gravity);
         this.world = world;
         
@@ -85,4 +85,68 @@ export const physicsWorld = {
             this.world = null;
         }
     }
-}; 
+};
+
+// Load car model
+function loadCar() {
+    return new Promise((resolve, reject) => {
+        loader.load(
+            'car2.glb',
+            (gltf) => {
+                car = gltf.scene;
+                
+                // Enable shadows
+                car.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+                
+                // Position car
+                car.position.set(0, 2, 0);
+                scene.add(car);
+                
+                // Create physics body for car
+                const boundingBox = new THREE.Box3().setFromObject(car);
+                const size = new THREE.Vector3();
+                boundingBox.getSize(size);
+                const center = new THREE.Vector3();
+                boundingBox.getCenter(center);
+                
+                console.log("Creating car physics body with size:", size);
+                
+                // Create physics body
+                const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
+                    .setTranslation(center.x, center.y, center.z)
+                    .setLinearDamping(0.05)
+                    .setAngularDamping(0.05)
+                    .setCanSleep(false)
+                    .setCcdEnabled(true)
+                    .setGravityScale(0.5); // Reduced gravity effect on the car
+                
+                const body = physicsWorld.world.createRigidBody(bodyDesc);
+                
+                // Create collider
+                const colliderDesc = RAPIER.ColliderDesc.cuboid(size.x / 2, size.y / 2, size.z / 2)
+                    .setRestitution(0.1)
+                    .setFriction(0.5)
+                    .setDensity(10.0);
+                
+                physicsWorld.world.createCollider(colliderDesc, body);
+                
+                carBodyHandle = body.handle;
+                
+                console.log('Car loaded with physics, handle:', carBodyHandle);
+                resolve();
+            },
+            (xhr) => {
+                console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+            },
+            (error) => {
+                console.error('Error loading car:', error);
+                reject(error);
+            }
+        );
+    });
+} 

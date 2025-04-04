@@ -50,6 +50,7 @@ scene.add(dirLight);
 const loader = new GLTFLoader();
 let car = null;
 let carBodyHandle = null;
+let groundBodyHandle = null;
 
 // Car controls
 const carControls = {
@@ -97,6 +98,9 @@ function setupControls() {
                         camera.position.set(pos.x, pos.y + 20, pos.z + 30);
                     }
                 }
+                break;
+            case 'r': // Reload landscape
+                reloadLandscape().catch(console.error);
                 break;
         }
     });
@@ -153,7 +157,7 @@ function updateCarPhysics() {
 
     if (carControls.w) {
         console.log("W key pressed - applying forward impulse");
-        impulse.add(rotatedForward.clone().multiplyScalar(800.0));
+        impulse.add(rotatedForward.clone().multiplyScalar(1000.0));
     }
     if (carControls.s) {
         console.log("S key pressed - applying backward impulse");
@@ -162,11 +166,11 @@ function updateCarPhysics() {
 
     if (carControls.a) {
         console.log("A key pressed - applying left turn");
-        body.applyTorqueImpulse({ x: 0, y: 500.0, z: 0 }, true);
+        body.applyTorqueImpulse({ x: 0, y: 1000.0, z: 0 }, true);
     }
     if (carControls.d) {
         console.log("D key pressed - applying right turn");
-        body.applyTorqueImpulse({ x: 0, y: -500.0, z: 0 }, true);
+        body.applyTorqueImpulse({ x: 0, y: -1000.0, z: 0 }, true);
     }
 
     if (!impulse.equals(new THREE.Vector3(50, 50, 50))) {
@@ -206,12 +210,41 @@ function updateCamera() {
         offset.z * (1 - 2 * rotation.x * rotation.x - 2 * rotation.y * rotation.y)
     );
     
-    // Set camera position
-    camera.position.set(
+    // Calculate desired camera position
+    const desiredPosition = new THREE.Vector3(
         position.x - rotatedOffset.x,
         position.y + rotatedOffset.y,
         position.z - rotatedOffset.z
     );
+    
+    // Create a ray from the car to the camera position
+    const rayOrigin = new THREE.Vector3(position.x, position.y + 1, position.z);
+    const rayDirection = new THREE.Vector3(
+        desiredPosition.x - position.x,
+        desiredPosition.y - position.y,
+        desiredPosition.z - position.z
+    ).normalize();
+    
+    // Cast ray to check for ground collision
+    const ray = new RAPIER.Ray(rayOrigin, rayDirection);
+    const maxToi = 100.0;
+    const solid = true;
+    const hit = physicsWorld.world.castRay(ray, maxToi, solid);
+    
+    if (hit) {
+        // If we hit something, adjust camera position to stay above the hit point
+        const hitPoint = ray.pointAt(hit.toi);
+        const minHeightAboveGround = 5.0; // Minimum height above ground
+        const hitHeight = hitPoint.y;
+        
+        // If camera would be too close to ground, raise it
+        if (desiredPosition.y < hitHeight + minHeightAboveGround) {
+            desiredPosition.y = hitHeight + minHeightAboveGround;
+        }
+    }
+    
+    // Set camera position
+    camera.position.copy(desiredPosition);
     
     // Look at car
     camera.lookAt(position.x, position.y + 1, position.z);
@@ -260,6 +293,14 @@ function loadLandscape() {
                         const verticesArray = new Float32Array(vertices);
                         const indicesArray = new Uint32Array(indices);
 
+                        // Remove old ground body if it exists
+                        if (groundBodyHandle) {
+                            const oldBody = physicsWorld.world.bodies.get(groundBodyHandle);
+                            if (oldBody) {
+                                physicsWorld.world.removeRigidBody(oldBody);
+                            }
+                        }
+
                         // Create ground body + TriMesh collider
                         const groundBodyDesc = RAPIER.RigidBodyDesc.fixed();
                         const groundBody = physicsWorld.world.createRigidBody(groundBodyDesc);
@@ -267,10 +308,7 @@ function loadLandscape() {
                         const colliderDesc = RAPIER.ColliderDesc.trimesh(verticesArray, indicesArray);
                         physicsWorld.world.createCollider(colliderDesc, groundBody);
 
-                        // Debug visualization
-                        //child.material.wireframe = true;
-                        //child.material.opacity = 0.5;
-                        //child.material.transparent = true;
+                        groundBodyHandle = groundBody.handle;
 
                         console.log('Created trimesh collider with', positionAttr.count, 'vertices');
                     }
@@ -286,6 +324,29 @@ function loadLandscape() {
                 reject(error);
             }
         );
+    });
+}
+
+// Function to reload landscape
+function reloadLandscape() {
+    return new Promise((resolve, reject) => {
+        // Remove old landscape meshes from scene
+        scene.traverse((child) => {
+            if (child.isMesh && child !== car) {
+                scene.remove(child);
+            }
+        });
+
+        // Load new landscape
+        loadLandscape()
+            .then(() => {
+                console.log('Landscape reloaded successfully');
+                resolve();
+            })
+            .catch((error) => {
+                console.error('Error reloading landscape:', error);
+                reject(error);
+            });
     });
 }
 

@@ -53,11 +53,10 @@ let carBodyHandle = null;
 
 // Car controls
 const carControls = {
-    forward: false,
-    backward: false,
-    left: false,
-    right: false,
-    brake: false
+    w: false,
+    s: false,
+    a: false,
+    d: false
 };
 
 // Control mode
@@ -76,19 +75,16 @@ function setupControls() {
     document.addEventListener('keydown', (event) => {
         switch(event.key.toLowerCase()) {
             case 'w':
-                carControls.forward = true;
+                carControls.w = true;
                 break;
             case 's':
-                carControls.backward = true;
+                carControls.s = true;
                 break;
             case 'a':
-                carControls.left = true;
+                carControls.a = true;
                 break;
             case 'd':
-                carControls.right = true;
-                break;
-            case ' ':
-                carControls.brake = true;
+                carControls.d = true;
                 break;
             case 'c': // Toggle between car and orbit controls
                 isOrbitMode = !isOrbitMode;
@@ -108,19 +104,16 @@ function setupControls() {
     document.addEventListener('keyup', (event) => {
         switch(event.key.toLowerCase()) {
             case 'w':
-                carControls.forward = false;
+                carControls.w = false;
                 break;
             case 's':
-                carControls.backward = false;
+                carControls.s = false;
                 break;
             case 'a':
-                carControls.left = false;
+                carControls.a = false;
                 break;
             case 'd':
-                carControls.right = false;
-                break;
-            case ' ':
-                carControls.brake = false;
+                carControls.d = false;
                 break;
         }
     });
@@ -128,10 +121,16 @@ function setupControls() {
 
 // Update car physics based on controls
 function updateCarPhysics() {
-    if (!car || !carBodyHandle) return;
+    if (!car || !carBodyHandle) {
+        console.log("Car or carBodyHandle not initialized");
+        return;
+    }
     
     const body = physicsWorld.world.bodies.get(carBodyHandle);
-    if (!body) return;
+    if (!body) {
+        console.log("Could not get physics body for car");
+        return;
+    }
 
     const pos = body.translation();
     const rot = body.rotation();
@@ -146,32 +145,34 @@ function updateCarPhysics() {
     }
 
     // Forward vector based on car's rotation
-    const forward = new THREE.Vector3(0, 0, -1);
+    const forward = new THREE.Vector3(0, 0, 1); // +Z is forward
     const quaternion = new THREE.Quaternion(rot.x, rot.y, rot.z, rot.w);
     const rotatedForward = forward.clone().applyQuaternion(quaternion).normalize();
 
     let impulse = new THREE.Vector3(0, 0, 0);
 
-    if (carControls.forward) {
-        impulse.add(rotatedForward.clone().multiplyScalar(carProperties.acceleration * 1.0));
+    if (carControls.w) {
+        console.log("W key pressed - applying forward impulse");
+        impulse.add(rotatedForward.clone().multiplyScalar(800.0));
     }
-    if (carControls.backward) {
-        impulse.add(rotatedForward.clone().multiplyScalar(-carProperties.acceleration * 0.5));
-    }
-
-    if (carControls.left) {
-        body.applyTorqueImpulse({ x: 0, y: carProperties.turnSpeed * 1.0, z: 0 }, true);
-    }
-    if (carControls.right) {
-        body.applyTorqueImpulse({ x: 0, y: -carProperties.turnSpeed * 1.0, z: 0 }, true);
+    if (carControls.s) {
+        console.log("S key pressed - applying backward impulse");
+        impulse.add(rotatedForward.clone().multiplyScalar(-500.0));
     }
 
-    if (!impulse.equals(new THREE.Vector3(0, 0, 0))) {
+    if (carControls.a) {
+        console.log("A key pressed - applying left turn");
+        body.applyTorqueImpulse({ x: 0, y: 500.0, z: 0 }, true);
+    }
+    if (carControls.d) {
+        console.log("D key pressed - applying right turn");
+        body.applyTorqueImpulse({ x: 0, y: -500.0, z: 0 }, true);
+    }
+
+    if (!impulse.equals(new THREE.Vector3(50, 50, 50))) {
+        console.log("Applying impulse:", impulse);
         body.applyImpulse({ x: impulse.x, y: impulse.y, z: impulse.z }, true);
     }
-
-    // Apply downforce to prevent flipping
-    body.applyImpulse({ x: 0, y: -1.0, z: 0 }, true);
 
     // Update car mesh position and rotation
     car.position.set(pos.x, pos.y, pos.z);
@@ -315,27 +316,29 @@ function loadCar() {
                 const center = new THREE.Vector3();
                 boundingBox.getCenter(center);
                 
+                console.log("Creating car physics body with size:", size);
+                
                 // Create physics body
                 const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
                     .setTranslation(center.x, center.y, center.z)
-                    .setLinearDamping(0.5)
-                    .setAngularDamping(0.5)
-                    .setCanSleep(true)
-                    .setCcdEnabled(true); // Enable continuous collision detection
+                    .setLinearDamping(0.05)
+                    .setAngularDamping(0.05)
+                    .setCanSleep(false)
+                    .setCcdEnabled(true);
                 
                 const body = physicsWorld.world.createRigidBody(bodyDesc);
                 
                 // Create collider
                 const colliderDesc = RAPIER.ColliderDesc.cuboid(size.x / 2, size.y / 2, size.z / 2)
-                    .setRestitution(0.2)
-                    .setFriction(0.8)
-                    .setDensity(1.0);
+                    .setRestitution(0.1)
+                    .setFriction(0.5)
+                    .setDensity(10.0);
                 
                 physicsWorld.world.createCollider(colliderDesc, body);
                 
                 carBodyHandle = body.handle;
                 
-                console.log('Car loaded with physics');
+                console.log('Car loaded with physics, handle:', carBodyHandle);
                 resolve();
             },
             (xhr) => {

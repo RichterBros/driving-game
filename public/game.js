@@ -57,7 +57,8 @@ const carControls = {
     w: false,
     s: false,
     a: false,
-    d: false
+    d: false,
+    f: false
 };
 
 // Control mode
@@ -99,6 +100,10 @@ function setupControls() {
                     }
                 }
                 break;
+            case 'f': // Flip car
+                carControls.f = true;
+                flipCar();
+                break;
             case 'r': // Reload landscape
                 reloadLandscape().catch(console.error);
                 break;
@@ -119,8 +124,46 @@ function setupControls() {
             case 'd':
                 carControls.d = false;
                 break;
+            case 'f':
+                carControls.f = false;
+                break;
         }
     });
+}
+
+// Function to flip the car back over
+function flipCar() {
+    if (!car || !carBodyHandle) return;
+    
+    const body = physicsWorld.world.bodies.get(carBodyHandle);
+    if (!body) return;
+
+    // Get car's current orientation
+    const rot = body.rotation();
+    const quaternion = new THREE.Quaternion(rot.x, rot.y, rot.z, rot.w);
+    const up = new THREE.Vector3(0, 1, 0);
+    const carUp = new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion);
+    
+    // Check if car is upside down (dot product < 0)
+    if (up.dot(carUp) < 0) {
+        // Apply upward force and rotation to flip the car
+        const pos = body.translation();
+        
+        // Stop current movement
+        body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+        body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+        
+        // Lift the car slightly
+        body.setTranslation({ x: pos.x, y: pos.y + 2, z: pos.z }, true);
+        
+        // Apply rotation to right the car
+        const targetRotation = new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(0, quaternion.y, 0)
+        );
+        body.setRotation(targetRotation, true);
+        
+        console.log("Flipping car back over");
+    }
 }
 
 // Update car physics based on controls
@@ -148,6 +191,27 @@ function updateCarPhysics() {
         return;
     }
 
+    // Get current velocity and angular velocity
+    const linvel = body.linvel();
+    const angvel = body.angvel();
+
+    // Limit angular velocity to prevent excessive spinning
+    const maxAngularVelocity = 3.0; // Reduced from 5.0
+    if (Math.abs(angvel.x) > maxAngularVelocity || 
+        Math.abs(angvel.y) > maxAngularVelocity || 
+        Math.abs(angvel.z) > maxAngularVelocity) {
+        const scale = maxAngularVelocity / Math.max(
+            Math.abs(angvel.x),
+            Math.abs(angvel.y),
+            Math.abs(angvel.z)
+        );
+        body.setAngvel({
+            x: angvel.x * scale,
+            y: angvel.y * scale,
+            z: angvel.z * scale
+        }, true);
+    }
+
     // Forward vector based on car's rotation
     const forward = new THREE.Vector3(0, 0, 1); // +Z is forward
     const quaternion = new THREE.Quaternion(rot.x, rot.y, rot.z, rot.w);
@@ -157,23 +221,36 @@ function updateCarPhysics() {
 
     if (carControls.w) {
         console.log("W key pressed - applying forward impulse");
-        impulse.add(rotatedForward.clone().multiplyScalar(1000.0));
+        impulse.add(rotatedForward.clone().multiplyScalar(8000.0)); // Increased from 800.0
     }
     if (carControls.s) {
         console.log("S key pressed - applying backward impulse");
-        impulse.add(rotatedForward.clone().multiplyScalar(-500.0));
+        impulse.add(rotatedForward.clone().multiplyScalar(-5000.0)); // Increased from -500.0
     }
+
+    // Apply stabilizing torque to keep car upright
+    const up = new THREE.Vector3(0, 1, 0);
+    const carUp = new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion);
+    const cross = new THREE.Vector3().crossVectors(up, carUp);
+    const stabilizationTorque = cross.multiplyScalar(100.0); // Increased from 50.0
 
     if (carControls.a) {
         console.log("A key pressed - applying left turn");
-        body.applyTorqueImpulse({ x: 0, y: 1000.0, z: 0 }, true);
+        body.applyTorqueImpulse({ x: 0, y: 5000.0, z: 0 }, true); // Reduced from 500.0
     }
     if (carControls.d) {
         console.log("D key pressed - applying right turn");
-        body.applyTorqueImpulse({ x: 0, y: -1000.0, z: 0 }, true);
+        body.applyTorqueImpulse({ x: 0, y: -5000.0, z: 0 }, true); // Reduced from -500.0
     }
 
-    if (!impulse.equals(new THREE.Vector3(50, 50, 50))) {
+    // Apply stabilization torque
+    body.applyTorqueImpulse({
+        x: stabilizationTorque.x,
+        y: stabilizationTorque.y,
+        z: stabilizationTorque.z
+    }, true);
+
+    if (!impulse.equals(new THREE.Vector3(0, 0, 0))) {
         console.log("Applying impulse:", impulse);
         body.applyImpulse({ x: impulse.x, y: impulse.y, z: impulse.z }, true);
     }
@@ -379,21 +456,22 @@ function loadCar() {
                 
                 console.log("Creating car physics body with size:", size);
                 
-                // Create physics body
+                // Create physics body with improved stability settings
                 const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
                     .setTranslation(center.x, center.y, center.z)
-                    .setLinearDamping(0.05)
-                    .setAngularDamping(0.05)
+                    .setLinearDamping(0.2)  // Increased from 0.1
+                    .setAngularDamping(0.7) // Increased from 0.5
                     .setCanSleep(false)
-                    .setCcdEnabled(true);
+                    .setCcdEnabled(true)
+                    .setGravityScale(1.0); // Increased from 0.5
                 
                 const body = physicsWorld.world.createRigidBody(bodyDesc);
                 
-                // Create collider
+                // Create collider with improved stability settings
                 const colliderDesc = RAPIER.ColliderDesc.cuboid(size.x / 2, size.y / 2, size.z / 2)
                     .setRestitution(0.1)
-                    .setFriction(0.5)
-                    .setDensity(10.0);
+                    .setFriction(0.9)  // Increased from 0.8
+                    .setDensity(50.0); // Increased from 10.0
                 
                 physicsWorld.world.createCollider(colliderDesc, body);
                 

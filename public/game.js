@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { physicsWorld } from './physics.js';
 import * as RAPIER from '@dimforge/rapier3d-compat';
+// Socket.IO will be loaded via script tag in HTML
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -72,6 +73,93 @@ const carProperties = {
     turnSpeed: 3.0,
     brakeForce: 30
 };
+
+// Global variables for multiplayer
+let socket;
+let playerId;
+const remotePlayers = {}; // Store other players' cars
+let myPlayerId = null;
+
+// Initialize socket connection
+function initSocket() {
+    console.log('Initializing socket connection...');
+    socket = io('http://localhost:3000'); // Connect to your server
+
+    socket.on('connect', () => {
+        console.log('Connected to server');
+        myPlayerId = socket.id;
+        console.log('My player ID:', myPlayerId);
+    });
+
+    socket.on('connect_error', (error) => {
+        console.error('Socket connection error:', error);
+    });
+
+    socket.on('disconnect', (reason) => {
+        console.log('Disconnected from server:', reason);
+    });
+
+    socket.on('initialize', (data) => {
+        console.log('Game initialized with data:', data);
+        myPlayerId = data.id; // Ensure we have the correct player ID
+        // Create cars for existing players
+        for (const id in data.players) {
+            if (id !== myPlayerId) {
+                console.log('Creating car for existing player:', id);
+                createRemoteCar({
+                    id: id,
+                    position: data.players[id].position,
+                    rotation: data.players[id].rotation
+                });
+            }
+        }
+    });
+
+    socket.on('playerJoined', (playerData) => {
+        if (playerData.id !== myPlayerId) {
+            console.log('New player joined:', playerData.id);
+            createRemoteCar(playerData);
+        }
+    });
+
+    socket.on('playerMoved', (data) => {
+        const remoteCar = remotePlayers[data.id];
+        if (remoteCar) {
+            remoteCar.position.set(data.position.x, data.position.y, data.position.z);
+            remoteCar.quaternion.set(data.rotation.x, data.rotation.y, data.rotation.z, data.rotation.w);
+        } else {
+            console.warn('Received position update for unknown player:', data.id);
+        }
+    });
+
+    socket.on('playerLeft', (id) => {
+        if (remotePlayers[id]) {
+            scene.remove(remotePlayers[id]);
+            delete remotePlayers[id];
+            console.log('Player left:', id);
+        }
+    });
+}
+
+// Create a remote player's car
+function createRemoteCar(playerData) {
+    console.log('Creating remote car for player:', playerData.id);
+    const geometry = new THREE.BoxGeometry(4, 2, 8);
+    const material = new THREE.MeshStandardMaterial({ color: 0x8888ff });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    mesh.position.set(
+        playerData.position.x,
+        playerData.position.y,
+        playerData.position.z
+    );
+
+    scene.add(mesh);
+    remotePlayers[playerData.id] = mesh;
+    console.log('Remote car created and added to scene');
+}
 
 // Set up keyboard controls
 function setupControls() {
@@ -464,23 +552,22 @@ function loadCar() {
                 // Create physics body with improved stability settings
                 const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
                     .setTranslation(center.x, center.y, center.z)
-                    .setLinearDamping(0.3)  // Increased from 0.2
-                    .setAngularDamping(0.8) // Increased from 0.7
+                    .setLinearDamping(0.3)
+                    .setAngularDamping(0.8)
                     .setCanSleep(false)
                     .setCcdEnabled(true)
-                    .setGravityScale(1.2); // Increased from 1.0
+                    .setGravityScale(1.2);
                 
                 const body = physicsWorld.world.createRigidBody(bodyDesc);
+                carBodyHandle = body.handle;
                 
                 // Create collider with improved stability settings
                 const colliderDesc = RAPIER.ColliderDesc.cuboid(size.x / 2, size.y / 2, size.z / 2)
                     .setRestitution(0.1)
-                    .setFriction(0.95)  // Increased from 0.9
-                    .setDensity(50.0); // Increased from 50.0
+                    .setFriction(0.95)
+                    .setDensity(50.0);
                 
                 physicsWorld.world.createCollider(colliderDesc, body);
-                
-                carBodyHandle = body.handle;
                 
                 console.log('Car loaded with physics, handle:', carBodyHandle);
                 resolve();
@@ -673,107 +760,228 @@ function updateBullets() {
     });
 }
 
-// Animation loop
-function animate() {
-    requestAnimationFrame(animate);
-    
-    try {
-        // Step physics simulation
-        physicsWorld.step();
-        
-        // Update car physics
-        updateCarPhysics();
-        
-        // Update car position
-        updateCar();
-        
-        // Update bullets
-        updateBullets();
-        
-        // Update camera based on current mode
-        if (isOrbitMode) {
-            // Update orbit controls target to follow car
-            if (car && carBodyHandle) {
-                const body = physicsWorld.world.bodies.get(carBodyHandle);
-                if (body) {
-                    const pos = body.translation();
-                    controls.target.set(pos.x, pos.y + 1, pos.z);
-                }
-            }
-            controls.update();
-        } else {
-            // Use car follow camera
-            updateCamera();
-        }
-        
-        // Update sphere positions and rotations
-        spheres.forEach((sphere, index) => {
-            try {
-                const state = physicsWorld.getBodyState(sphere.rigidBodyHandle);
-                if (state) {
-                    sphere.mesh.position.set(
-                        state.position.x,
-                        state.position.y,
-                        state.position.z
-                    );
-                    
-                    sphere.mesh.quaternion.set(
-                        state.rotation.x,
-                        state.rotation.y,
-                        state.rotation.z,
-                        state.rotation.w
-                    );
-                    
-                    if (sphere.light) {
-                        sphere.light.position.copy(sphere.mesh.position);
-                    }
-                    
-                    if (sphere.helper) {
-                        sphere.helper.update();
-                    }
-                }
-            } catch (error) {
-                console.error(`Error updating sphere ${index}:`, error);
-            }
-        });
-    } catch (err) {
-        console.error('Physics step error:', err);
+// Update controls based on keyboard input
+function updateControls() {
+    if (!car || !carBodyHandle) return;
+
+    const body = physicsWorld.world.bodies.get(carBodyHandle);
+    if (!body) return;
+
+    // Get current velocity and angular velocity
+    const linvel = body.linvel();
+    const angvel = body.angvel();
+
+    // Limit angular velocity to prevent excessive spinning
+    const maxAngularVelocity = 3.0;
+    if (Math.abs(angvel.x) > maxAngularVelocity || 
+        Math.abs(angvel.y) > maxAngularVelocity || 
+        Math.abs(angvel.z) > maxAngularVelocity) {
+        const scale = maxAngularVelocity / Math.max(
+            Math.abs(angvel.x),
+            Math.abs(angvel.y),
+            Math.abs(angvel.z)
+        );
+        body.setAngvel({
+            x: angvel.x * scale,
+            y: angvel.y * scale,
+            z: angvel.z * scale
+        }, true);
     }
-    
-    renderer.render(scene, camera);
+
+    // Get car's rotation
+    const rot = body.rotation();
+    const quaternion = new THREE.Quaternion(rot.x, rot.y, rot.z, rot.w);
+
+    // Forward vector based on car's rotation
+    const forward = new THREE.Vector3(0, 0, 1);
+    const rotatedForward = forward.clone().applyQuaternion(quaternion).normalize();
+
+    let impulse = new THREE.Vector3(0, 0, 0);
+
+    if (carControls.w) {
+        impulse.add(rotatedForward.clone().multiplyScalar(8000.0));
+    }
+    if (carControls.s) {
+        impulse.add(rotatedForward.clone().multiplyScalar(-5000.0));
+    }
+
+    // Apply stabilizing torque to keep car upright
+    const up = new THREE.Vector3(0, 1, 0);
+    const carUp = new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion);
+    const cross = new THREE.Vector3().crossVectors(up, carUp);
+    const stabilizationTorque = cross.multiplyScalar(100.0);
+
+    if (carControls.a) {
+        body.applyTorqueImpulse({ x: 0, y: 5000.0, z: 0 }, true);
+    }
+    if (carControls.d) {
+        body.applyTorqueImpulse({ x: 0, y: -5000.0, z: 0 }, true);
+    }
+
+    // Apply stabilization torque
+    body.applyTorqueImpulse({
+        x: stabilizationTorque.x,
+        y: stabilizationTorque.y,
+        z: stabilizationTorque.z
+    }, true);
+
+    if (!impulse.equals(new THREE.Vector3(0, 0, 0))) {
+        body.applyImpulse({ x: impulse.x, y: impulse.y, z: impulse.z }, true);
+    }
 }
 
-// Initialize physics and create game objects
+// Apply forces to the car based on physics
+function applyCarForces() {
+    if (!car || !carBodyHandle) return;
+
+    const body = physicsWorld.world.bodies.get(carBodyHandle);
+    if (!body) return;
+
+    // Get car's current position and rotation
+    const pos = body.translation();
+    const rot = body.rotation();
+
+    // Reset if invalid
+    if (!isFinite(pos.x) || !isFinite(pos.y) || !isFinite(pos.z)) {
+        console.warn("Invalid car position detected, resetting position");
+        body.setTranslation({ x: 0, y: 15, z: 0 }, true);
+        body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+        body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+        return;
+    }
+
+    // Get current velocity
+    const linvel = body.linvel();
+    const speed = Math.sqrt(linvel.x * linvel.x + linvel.z * linvel.z);
+
+    // Apply drag force (air resistance)
+    const dragForce = 0.1;
+    const drag = {
+        x: -linvel.x * dragForce,
+        y: -linvel.y * dragForce,
+        z: -linvel.z * dragForce
+    };
+    body.applyImpulse(drag, true);
+
+    // Apply gravity
+    const gravity = { x: 0, y: -9.81, z: 0 };
+    body.applyImpulse(gravity, true);
+
+    // Apply ground friction
+    if (pos.y < 1.0) { // If car is close to ground
+        const friction = 0.5;
+        const frictionForce = {
+            x: -linvel.x * friction,
+            y: 0,
+            z: -linvel.z * friction
+        };
+        body.applyImpulse(frictionForce, true);
+    }
+}
+
+// Update mesh positions from physics bodies
+function updateMeshPositionsFromPhysics() {
+    // Update local car position
+    if (car && carBodyHandle) {
+        const body = physicsWorld.world.bodies.get(carBodyHandle);
+        if (body) {
+            const pos = body.translation();
+            const rot = body.rotation();
+            
+            // Update car mesh position and rotation
+            car.position.set(pos.x, pos.y, pos.z);
+            car.quaternion.set(rot.x, rot.y, rot.z, rot.w);
+        }
+    }
+
+    // Update remote players' positions
+    for (const id in remotePlayers) {
+        const remoteCar = remotePlayers[id];
+        if (remoteCar) {
+            // Note: Remote player positions are updated via socket events
+            // This is just a safety check to ensure the mesh exists
+            if (!scene.getObjectById(remoteCar.id)) {
+                scene.add(remoteCar);
+            }
+        }
+    }
+
+    // Update bullets
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        const bullet = bullets[i];
+        if (bullet.body && bullet.mesh) {
+            const pos = bullet.body.translation();
+            const rot = bullet.body.rotation();
+            
+            bullet.mesh.position.set(pos.x, pos.y, pos.z);
+            bullet.mesh.quaternion.set(rot.x, rot.y, rot.z, rot.w);
+            
+            // Check if bullet is too old or out of bounds
+            const now = Date.now();
+            if (now - bullet.spawnTime > BULLET_LIFETIME || 
+                Math.abs(pos.x) > 1000 || 
+                Math.abs(pos.y) > 1000 || 
+                Math.abs(pos.z) > 1000) {
+                removeBullet(bullet);
+            }
+        }
+    }
+}
+
+// Modify the animate function to send position updates
+function animate() {
+    requestAnimationFrame(animate);
+
+    try {
+        // 1. Handle input and game logic
+        updateControls();
+
+        // 2. Apply forces or impulses to bodies
+        applyCarForces();
+
+        // 3. Step physics
+        if (physicsWorld && physicsWorld.world) {
+            try {
+                physicsWorld.step();
+            } catch (error) {
+                console.error("Physics step error:", error);
+                return;
+            }
+        }
+
+        // 4. Update mesh positions from physics
+        updateMeshPositionsFromPhysics();
+
+        // 5. Send position update to server
+        if (car && carBodyHandle && socket && myPlayerId) {
+            const body = physicsWorld.world.bodies.get(carBodyHandle);
+            if (body) {
+                const pos = body.translation();
+                const rot = body.rotation();
+                socket.emit('updatePosition', {
+                    position: { x: pos.x, y: pos.y, z: pos.z },
+                    rotation: { x: rot.x, y: rot.y, z: rot.z, w: rot.w }
+                });
+            }
+        }
+
+        // 6. Update camera
+        updateCamera();
+
+        // 7. Render
+        renderer.render(scene, camera);
+    } catch (error) {
+        console.error("Error in animation loop:", error);
+    }
+}
+
+// Modify the initialization to include socket setup
 physicsWorld.init().then(async () => {
     try {
-        // Set up controls
+        initSocket(); // Initialize socket connection
         setupControls();
-        
-        // Load landscape first
         await loadLandscape();
-        
-        // Load car
         await loadCar();
-        
-        // Create spheres after a delay
-        setTimeout(() => {
-            try {
-                spheres.push(createPhysicsSphere(0xff0000, { x: -10, y: 30, z: 0 }));
-                spheres.push(createPhysicsSphere(0x0000ff, { x: 0, y: 30, z: 10 }));
-                spheres.push(createPhysicsSphere(0x00ff00, { x: 10, y: 30, z: -10 }));
-                spheres.push(createPhysicsSphere(0xffff00, { x: 0, y: 30, z: 0 }));
-                
-                console.log('Created', spheres.length, 'spheres with physics');
-                
-                spheres.forEach((sphere, index) => {
-                    const pos = sphere.mesh.position;
-                    console.log(`Sphere ${index} initial position:`, pos);
-                });
-            } catch (error) {
-                console.error('Error creating spheres:', error);
-            }
-        }, 1000);
-        
         animate();
     } catch (error) {
         console.error('Error during initialization:', error);

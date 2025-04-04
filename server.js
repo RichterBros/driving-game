@@ -3,7 +3,7 @@ const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http, {
     cors: {
-        origin: ["https://driving-game-frontend.onrender.com", "http://localhost:3000"],
+        origin: ["http://localhost:3000"],
         methods: ["GET", "POST"],
         credentials: true
     }
@@ -12,140 +12,138 @@ const io = require('socket.io')(http, {
 app.use(express.static('public'));
 
 const players = {};
+const bullets = {};
+const MAX_HEALTH = 100;
+const MAX_SCORE = 3;
 
-// Create a grid of spawn points with plenty of space between each point
-function generateSpawnPoints() {
-    const points = [];
-    const gridSize = 5;  // 5x5 grid = 25 possible spawn points
-    const spacing = 200; // 200 units between each point
-    
-    for (let i = 0; i < gridSize; i++) {
-        for (let j = 0; j < gridSize; j++) {
-            points.push({
-                x: (i - Math.floor(gridSize/2)) * spacing,
-                y: 0,
-                z: (j - Math.floor(gridSize/2)) * spacing
-            });
-        }
-    }
-    
-    // Shuffle the points array for random but unique spawns
-    return points.sort(() => Math.random() - 0.5);
-}
-
-const spawnPoints = generateSpawnPoints();
-let currentSpawnIndex = 0;
-
-function getNextSpawnPoint() {
-    const spawnPoint = spawnPoints[currentSpawnIndex];
-    currentSpawnIndex = (currentSpawnIndex + 1) % spawnPoints.length;
-    return spawnPoint;
-}
-
-// Clean up spawn points when players disconnect
-io.on('disconnect', (socket) => {
-    const player = players[socket.id];
-    if (player) {
-        const pointKey = `${player.position.x},${player.position.z}`;
-        usedSpawnPoints.delete(pointKey);
-    }
-    // ... rest of disconnect handling ...
-});
-
-// Keep track of connected players and their positions
-let playerCount = 0;
-
-// Just two fixed spawn positions, 1000 units apart
 const SPAWN_POSITIONS = [
-    { x: -500, y: 0, z: 0 },  // First car
-    { x: 500, y: 0, z: 0 }    // Second car
+    { x: -500, y: 0, z: 0 },
+    { x: 500, y: 0, z: 0 }
 ];
 
-let spawnIndex = 0;
+const gameState = {
+    scores: {},
+    playerCount: 0
+};
 
 io.on('connection', (socket) => {
     const playerId = socket.id;
-    playerCount++;
-    
-    // Alternate between the two spawn positions
+    gameState.playerCount++;
+
+    const spawnIndex = Object.keys(players).length % SPAWN_POSITIONS.length;
     const spawnPosition = SPAWN_POSITIONS[spawnIndex];
-    spawnIndex = (spawnIndex + 1) % 2;  // Toggle between 0 and 1
-    
-    // Initialize the new player
+
     players[playerId] = {
         id: playerId,
         position: spawnPosition,
-        rotation: { x: 0, y: 0, z: 0 }
+        rotation: { x: 0, y: 0, z: 0 },
+        health: MAX_HEALTH,
+        score: 0,
+        spawnIndex: spawnIndex
     };
 
-    // When a player disconnects, don't decrease playerCount to keep spawn positions unique
-    socket.on('disconnect', () => {
-        delete players[socket.id];
-        // ... rest of disconnect handling ...
-    });
+    gameState.scores[playerId] = 0;
 
-    // Emit the initial position to the new player
     socket.emit('initialize', {
         id: playerId,
         players: players,
-        position: spawnPosition
+        position: spawnPosition,
+        health: MAX_HEALTH,
+        score: 0,
+        playerCount: gameState.playerCount
     });
 
-    // ... rest of your connection handling code ...
+    socket.broadcast.emit('playerJoined', players[playerId]);
+    io.emit('playerCountUpdate', gameState.playerCount);
 
-    // Add this with your other socket event handlers
-    socket.on('requestGameState', () => {
-        // Send current game state to the requesting client
-        socket.emit('gameState', {
-            players: players
-        });
-    });
-
-    // Update the player connection handler
-    socket.on('playerMovement', (playerInfo) => {
-        if (players[socket.id]) {
-            players[socket.id].position = playerInfo.position;
-            players[socket.id].rotation = playerInfo.rotation;
-            // Broadcast to all other players
+    socket.on('updatePosition', (data) => {
+        if (players[playerId]) {
+            players[playerId].position = data.position;
+            players[playerId].rotation = data.rotation;
             socket.broadcast.emit('playerMoved', {
-                id: socket.id,
-                position: playerInfo.position,
-                rotation: playerInfo.rotation
+                id: playerId,
+                position: data.position,
+                rotation: data.rotation
             });
         }
     });
 
-    // Add bullet event handler
-    socket.on('bulletCreated', (data) => {
-        console.log('Server received bulletCreated event from:', socket.id);
-        console.log('Bullet data:', data);
-        console.log('Connected clients:', Object.keys(players));
-        
-        // Broadcast the bullet to all other clients
-        socket.broadcast.emit('bulletCreated', data);
-        console.log('Server broadcasted bullet to other clients');
-        
-        // Log the number of connected clients
-        const connectedClients = Object.keys(players).length;
-        console.log('Total connected clients:', connectedClients);
+    socket.on('createBullet', (data) => {
+        const bulletId = `${playerId}-${Date.now()}`;
+        bullets[bulletId] = {
+            id: bulletId,
+            position: data.position,
+            velocity: data.velocity,
+            owner: playerId
+        };
+        io.emit('bulletCreated', bullets[bulletId]);
+
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+            if (bullets[bulletId]) {
+                delete bullets[bulletId];
+                io.emit('bulletRemoved', bulletId);
+            }
+        }, 3000);
     });
 
-    // Handle player hits
-    socket.on('playerHit', (data) => {
-        console.log('Server received hit:', data);
-        // Broadcast the hit to all clients
-        io.emit('playerHit', data);
+    socket.on('bulletHit', (data) => {
+        const { bulletId, hitPlayerId } = data;
+        const bullet = bullets[bulletId];
+
+        if (bullet && players[hitPlayerId] && bullet.owner !== hitPlayerId) {
+            delete bullets[bulletId];
+            io.emit('bulletRemoved', bulletId);
+
+            players[hitPlayerId].health -= 25;
+
+            if (players[hitPlayerId].health <= 0) {
+                const shooterId = bullet.owner;
+                players[shooterId].score += 1;
+                gameState.scores[shooterId] = players[shooterId].score;
+
+                if (players[shooterId].score >= MAX_SCORE) {
+                    io.emit('gameOver', { winner: shooterId });
+                    Object.keys(players).forEach(id => {
+                        players[id].score = 0;
+                        gameState.scores[id] = 0;
+                    });
+                    io.emit('newRound', {
+                        message: "New round starting!",
+                        scores: gameState.scores
+                    });
+                }
+
+                players[hitPlayerId].health = MAX_HEALTH;
+                const index = players[hitPlayerId].spawnIndex;
+                players[hitPlayerId].position = SPAWN_POSITIONS[index];
+
+                io.emit('playerRespawned', {
+                    id: hitPlayerId,
+                    position: players[hitPlayerId].position,
+                    health: MAX_HEALTH
+                });
+            }
+
+            io.emit('playerHealthUpdate', {
+                id: hitPlayerId,
+                health: players[hitPlayerId].health
+            });
+
+            io.emit('scoreUpdate', gameState.scores);
+        }
     });
 
-    // Handle player kills
-    socket.on('playerKilled', (data) => {
-        console.log('Server received kill:', data);
-        // Broadcast the kill to all clients
-        io.emit('playerKilled', data);
+    socket.on('disconnect', () => {
+        delete players[playerId];
+        delete gameState.scores[playerId];
+        gameState.playerCount--;
+        socket.broadcast.emit('playerLeft', playerId);
+        io.emit('playerCountUpdate', gameState.playerCount);
     });
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 http.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });

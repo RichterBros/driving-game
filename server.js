@@ -17,8 +17,8 @@ const MAX_HEALTH = 100;
 const MAX_SCORE = 3;
 
 const SPAWN_POSITIONS = [
-    { x: -500, y: 0, z: 0 },
-    { x: 500, y: 0, z: 0 }
+    { x: -10, y: 2, z: 0 },
+    { x: 10, y: 2, z: 0 }
 ];
 
 const gameState = {
@@ -58,13 +58,27 @@ io.on('connection', (socket) => {
 
     socket.on('updatePosition', (data) => {
         if (players[playerId]) {
+            // Log position updates occasionally to avoid console spam
+            if (Math.random() < 0.05) {
+                console.log(`SERVER: Player ${playerId} moved to:`, {
+                    x: data.position.x.toFixed(2),
+                    y: data.position.y.toFixed(2),
+                    z: data.position.z.toFixed(2)
+                });
+            }
+            
             players[playerId].position = data.position;
             players[playerId].rotation = data.rotation;
-            socket.broadcast.emit('playerMoved', {
+            
+            // Add a simple debug flag to the data
+            const broadcastData = {
                 id: playerId,
                 position: data.position,
-                rotation: data.rotation
-            });
+                rotation: data.rotation,
+                timestamp: Date.now()
+            };
+            
+            socket.broadcast.emit('playerMoved', broadcastData);
         }
     });
 

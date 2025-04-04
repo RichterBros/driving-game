@@ -164,24 +164,81 @@ function initSocket() {
     });
 
     socket.on('playerMoved', (data) => {
+        console.log('DEBUG: ⭐ Received playerMoved event:', data);
         const otherPlayer = otherPlayers[data.id];
-        if (otherPlayer && otherPlayer.body) {
-            // Update physics body
-            otherPlayer.body.setTranslation(data.position, true);
-            otherPlayer.body.setRotation(data.rotation, true);
+        
+        // Add debugging to see what's actually in otherPlayers
+        console.log('DEBUG: 🔍 Remote player object structure:', {
+            id: data.id,
+            exists: !!otherPlayer,
+            type: otherPlayer ? typeof otherPlayer : 'N/A',
+            properties: otherPlayer ? Object.keys(otherPlayer) : []
+        });
+        
+        // Handle both old and new formats
+        if (otherPlayer) {
+            // Store previous position for logging
+            let prevPos;
             
-            // Update mesh
-            otherPlayer.mesh.position.set(
-                data.position.x,
-                data.position.y,
-                data.position.z
-            );
-            otherPlayer.mesh.quaternion.set(
-                data.rotation.x,
-                data.rotation.y,
-                data.rotation.z,
-                data.rotation.w
-            );
+            // Check if otherPlayer is the mesh directly or has a mesh property
+            if (otherPlayer.isMesh) {
+                // Old format: remotePlayers[id] = mesh
+                prevPos = otherPlayer.position.clone();
+                
+                // Update position and rotation directly
+                otherPlayer.position.set(
+                    data.position.x,
+                    data.position.y,
+                    data.position.z
+                );
+                otherPlayer.quaternion.set(
+                    data.rotation.x,
+                    data.rotation.y,
+                    data.rotation.z,
+                    data.rotation.w
+                );
+                
+                console.log('DEBUG: ⭐ Updated remote mesh directly:', {
+                    id: data.id,
+                    from: { x: prevPos.x.toFixed(2), y: prevPos.y.toFixed(2), z: prevPos.z.toFixed(2) },
+                    to: { x: data.position.x.toFixed(2), y: data.position.y.toFixed(2), z: data.position.z.toFixed(2) }
+                });
+            } 
+            else if (otherPlayer.mesh) {
+                // New format: remotePlayers[id] = { mesh, body }
+                prevPos = otherPlayer.mesh.position.clone();
+                
+                // Update mesh position and rotation
+                otherPlayer.mesh.position.set(
+                    data.position.x,
+                    data.position.y,
+                    data.position.z
+                );
+                otherPlayer.mesh.quaternion.set(
+                    data.rotation.x,
+                    data.rotation.y,
+                    data.rotation.z,
+                    data.rotation.w
+                );
+                
+                // Update physics body if it exists
+                if (otherPlayer.body) {
+                    otherPlayer.body.setTranslation(data.position, true);
+                    otherPlayer.body.setRotation(data.rotation, true);
+                }
+                
+                console.log('DEBUG: ⭐ Updated remote player object:', {
+                    id: data.id,
+                    from: { x: prevPos.x.toFixed(2), y: prevPos.y.toFixed(2), z: prevPos.z.toFixed(2) },
+                    to: { x: data.position.x.toFixed(2), y: data.position.y.toFixed(2), z: data.position.z.toFixed(2) }
+                });
+            }
+            else {
+                console.warn('DEBUG: ⚠️ Remote player has invalid format:', otherPlayer);
+            }
+        } else {
+            console.warn('DEBUG: ⚠️ Could not find remote player for update:', data.id);
+            console.log('DEBUG: Available remote players:', Object.keys(otherPlayers));
         }
     });
 
@@ -198,8 +255,9 @@ function initSocket() {
 
 // Create another player's car
 function createOtherPlayerCar(playerData) {
-    console.log('DEBUG: Creating remote car for player:', playerData.id);
-    
+    console.log('DEBUG: 🚙 Creating remote car for player:', playerData.id);
+    console.log('DEBUG: Initial position:', playerData.position);
+
     // Load the car model
     loader.load(
         'car2.glb',
@@ -209,7 +267,6 @@ function createOtherPlayerCar(playerData) {
                 if (child.isMesh) {
                     child.castShadow = true;
                     child.receiveShadow = true;
-                    // Use standard material with default color
                     child.material = new THREE.MeshStandardMaterial({ 
                         color: 0xffffff,
                         metalness: 0.5,
@@ -219,32 +276,20 @@ function createOtherPlayerCar(playerData) {
             });
 
             // Set initial position
-            const position = {
-                x: 0,
-                y: 2,
-                z: 0
-            };
-
-            // Use position from player data if valid
-            if (playerData.position && 
-                !isNaN(playerData.position.x) && 
-                !isNaN(playerData.position.y) && 
-                !isNaN(playerData.position.z)) {
-                position.x = playerData.position.x;
-                position.y = playerData.position.y;
-                position.z = playerData.position.z;
+            if (playerData.position) {
+                mesh.position.set(
+                    playerData.position.x,
+                    playerData.position.y,
+                    playerData.position.z
+                );
+                console.log('DEBUG: Set initial remote car position:', mesh.position);
+            } else {
+                console.warn('DEBUG: No initial position provided for remote car');
+                mesh.position.set(0, 2, 0);
             }
 
-            // Set position
-            mesh.position.set(position.x, position.y, position.z);
-            console.log('DEBUG: Set remote car position to:', position);
-
-            // Set rotation if provided and valid
-            if (playerData.rotation && 
-                !isNaN(playerData.rotation.x) && 
-                !isNaN(playerData.rotation.y) && 
-                !isNaN(playerData.rotation.z) && 
-                !isNaN(playerData.rotation.w)) {
+            // Set initial rotation
+            if (playerData.rotation) {
                 mesh.quaternion.set(
                     playerData.rotation.x,
                     playerData.rotation.y,
@@ -259,7 +304,7 @@ function createOtherPlayerCar(playerData) {
             boundingBox.getSize(size);
             
             const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
-                .setTranslation(position.x, position.y, position.z)
+                .setTranslation(mesh.position.x, mesh.position.y, mesh.position.z)
                 .setLinearDamping(0.3)
                 .setAngularDamping(0.8)
                 .setCanSleep(false)
@@ -268,11 +313,9 @@ function createOtherPlayerCar(playerData) {
             
             const body = physicsWorld.world.createRigidBody(bodyDesc);
             if (!body) {
-                console.error("Failed to create physics body for remote car");
+                console.error("DEBUG: Failed to create physics body for remote car");
                 return;
             }
-            
-            const bodyHandle = body.handle;
             
             const colliderDesc = RAPIER.ColliderDesc.cuboid(size.x / 2, size.y / 2, size.z / 2)
                 .setRestitution(0.1)
@@ -281,23 +324,29 @@ function createOtherPlayerCar(playerData) {
             
             physicsWorld.world.createCollider(colliderDesc, body);
 
-            // Store both mesh and physics body
+            // Store mesh and body
             otherPlayers[playerData.id] = {
                 mesh: mesh,
-                body: body,
-                bodyHandle: bodyHandle
+                body: body
             };
+            
+            console.log('DEBUG: ✅ Stored remote player in format:', {
+                id: playerData.id,
+                structure: 'Object with mesh and body properties',
+                keys: Object.keys(otherPlayers[playerData.id])
+            });
 
             // Add to scene
             scene.add(mesh);
-            console.log('DEBUG: Added remote car to scene');
+            console.log('DEBUG: Added remote car to scene. Position:', mesh.position);
+            console.log('DEBUG: Scene children count:', scene.children.length);
             updatePlayerCount();
         },
         (xhr) => {
             console.log((xhr.loaded / xhr.total * 100) + '% loaded');
         },
         (error) => {
-            console.error('Error loading remote car:', error);
+            console.error('DEBUG: Error loading remote car:', error);
         }
     );
 }
@@ -994,8 +1043,15 @@ function updateMeshPositionsFromPhysics() {
             car.position.set(pos.x, pos.y, pos.z);
             car.quaternion.set(rot.x, rot.y, rot.z, rot.w);
 
-            // Send position update to server
+            // Send position update to server less frequently
             if (socket && myPlayerId) {
+                // Only log every 30 frames to reduce console spam
+                if (Math.random() < 0.03) {
+                    console.log("DEBUG: 📤 Sending position update:", {
+                        pos: { x: pos.x.toFixed(2), y: pos.y.toFixed(2), z: pos.z.toFixed(2) }
+                    });
+                }
+                
                 const positionData = {
                     id: myPlayerId,
                     position: { x: pos.x, y: pos.y, z: pos.z },
@@ -1006,16 +1062,30 @@ function updateMeshPositionsFromPhysics() {
         }
     }
 
-    // Update other players' positions
-    for (const id in otherPlayers) {
-        const otherPlayer = otherPlayers[id];
-        if (otherPlayer && otherPlayer.body) {
-            const pos = otherPlayer.body.translation();
-            const rot = otherPlayer.body.rotation();
-            
-            if (otherPlayer.mesh) {
-                otherPlayer.mesh.position.set(pos.x, pos.y, pos.z);
-                otherPlayer.mesh.quaternion.set(rot.x, rot.y, rot.z, rot.w);
+    // Update other players' positions - only log occasionally
+    if (Math.random() < 0.1) {
+        for (const id in otherPlayers) {
+            const otherPlayer = otherPlayers[id];
+            if (otherPlayer) {
+                // Handle both formats
+                if (otherPlayer.isMesh) {
+                    // Old format: remotePlayers[id] = mesh
+                    const pos = otherPlayer.position;
+                    console.log(`DEBUG: 🚗 Remote player ${id} position (mesh format):`, {
+                        x: pos.x.toFixed(2), 
+                        y: pos.y.toFixed(2), 
+                        z: pos.z.toFixed(2)
+                    });
+                } 
+                else if (otherPlayer.mesh) {
+                    // New format: remotePlayers[id] = { mesh, body }
+                    const pos = otherPlayer.mesh.position;
+                    console.log(`DEBUG: 🚗 Remote player ${id} position (object format):`, {
+                        x: pos.x.toFixed(2), 
+                        y: pos.y.toFixed(2), 
+                        z: pos.z.toFixed(2)
+                    });
+                }
             }
         }
     }

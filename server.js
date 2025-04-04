@@ -30,6 +30,10 @@ io.on('connection', (socket) => {
     const playerId = socket.id;
     gameState.playerCount++;
 
+    console.log('🖥️ SERVER DEBUG: New player connected:', playerId);
+    console.log('🖥️ SERVER DEBUG: Total players:', gameState.playerCount);
+    console.log('🖥️ SERVER DEBUG: Current player IDs:', Object.keys(players));
+
     const spawnIndex = Object.keys(players).length % SPAWN_POSITIONS.length;
     const spawnPosition = SPAWN_POSITIONS[spawnIndex];
 
@@ -44,6 +48,7 @@ io.on('connection', (socket) => {
 
     gameState.scores[playerId] = 0;
 
+    console.log(`🖥️ SERVER DEBUG: Sending 'initialize' to new player ${playerId}`);
     socket.emit('initialize', {
         id: playerId,
         players: players,
@@ -53,14 +58,15 @@ io.on('connection', (socket) => {
         playerCount: gameState.playerCount
     });
 
+    console.log(`🖥️ SERVER DEBUG: Broadcasting 'playerJoined' for ${playerId} to other players`);
     socket.broadcast.emit('playerJoined', players[playerId]);
     io.emit('playerCountUpdate', gameState.playerCount);
 
     socket.on('updatePosition', (data) => {
         if (players[playerId]) {
             // Log position updates occasionally to avoid console spam
-            if (Math.random() < 0.05) {
-                console.log(`SERVER: Player ${playerId} moved to:`, {
+            if (Math.random() < 0.01) {
+                console.log(`🖥️ SERVER DEBUG: Player ${playerId} position update:`, {
                     x: data.position.x.toFixed(2),
                     y: data.position.y.toFixed(2),
                     z: data.position.z.toFixed(2)
@@ -70,15 +76,17 @@ io.on('connection', (socket) => {
             players[playerId].position = data.position;
             players[playerId].rotation = data.rotation;
             
-            // Add a simple debug flag to the data
-            const broadcastData = {
+            // Debug broadcast of 'playerMoved' events
+            if (Math.random() < 0.01) {
+                console.log(`🖥️ SERVER DEBUG: Broadcasting 'playerMoved' for ${playerId} to ${gameState.playerCount - 1} other players`);
+            }
+            
+            socket.broadcast.emit('playerMoved', {
                 id: playerId,
                 position: data.position,
                 rotation: data.rotation,
                 timestamp: Date.now()
-            };
-            
-            socket.broadcast.emit('playerMoved', broadcastData);
+            });
         }
     });
 
@@ -148,12 +156,25 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Check connections every 5 seconds
+    const pingInterval = setInterval(() => {
+        socket.emit('ping', { time: Date.now() });
+        console.log(`🖥️ SERVER DEBUG: Ping sent to ${playerId}`);
+    }, 5000);
+
     socket.on('disconnect', () => {
+        clearInterval(pingInterval);
+        console.log(`🖥️ SERVER DEBUG: Player ${playerId} disconnected`);
+        
         delete players[playerId];
         delete gameState.scores[playerId];
         gameState.playerCount--;
+        
+        console.log(`🖥️ SERVER DEBUG: Broadcasting 'playerLeft' for ${playerId} to remaining players`);
         socket.broadcast.emit('playerLeft', playerId);
         io.emit('playerCountUpdate', gameState.playerCount);
+        
+        console.log('🖥️ SERVER DEBUG: Remaining players:', Object.keys(players));
     });
 });
 

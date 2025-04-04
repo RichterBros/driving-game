@@ -12,7 +12,11 @@ scene.background = new THREE.Color(0x87ceeb); // Sky blue
 // Camera
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(0, 50, 100);
-camera.lookAt(0, 25, 0);
+camera.lookAt(0, 0, 0);
+
+// Add grid helper for better spatial awareness
+const gridHelper = new THREE.GridHelper(100, 20);
+scene.add(gridHelper);
 
 // Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -77,18 +81,44 @@ const carProperties = {
 // Global variables for multiplayer
 let socket;
 let playerId;
-const remotePlayers = {}; // Store other players' cars
+const otherPlayers = {}; // Store other players' cars
 let myPlayerId = null;
+
+// Add after the scene setup, before the socket initialization
+// Player count display
+const playerCountDiv = document.createElement('div');
+playerCountDiv.style.position = 'absolute';
+playerCountDiv.style.top = '10px';
+playerCountDiv.style.right = '10px';
+playerCountDiv.style.color = 'white';
+playerCountDiv.style.fontFamily = 'Arial';
+playerCountDiv.style.fontSize = '20px';
+playerCountDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+playerCountDiv.style.padding = '10px';
+playerCountDiv.style.borderRadius = '5px';
+document.body.appendChild(playerCountDiv);
+
+// Update the player count display
+function updatePlayerCount() {
+    const otherPlayerCount = Object.keys(otherPlayers).length;
+    const totalPlayers = otherPlayerCount + 1; // +1 for local player
+    console.log('Updating player count:', {
+        otherPlayers: otherPlayerCount,
+        totalPlayers: totalPlayers,
+        playerIds: Object.keys(otherPlayers)
+    });
+    playerCountDiv.textContent = `Players in game: ${totalPlayers}`;
+}
 
 // Initialize socket connection
 function initSocket() {
     console.log('Initializing socket connection...');
-    socket = io('http://localhost:3000'); // Connect to your server
+    socket = io('http://localhost:3000');
 
     socket.on('connect', () => {
-        console.log('Connected to server');
+        console.log('Connected to server with ID:', socket.id);
         myPlayerId = socket.id;
-        console.log('My player ID:', myPlayerId);
+        updatePlayerCount();
     });
 
     socket.on('connect_error', (error) => {
@@ -101,64 +131,175 @@ function initSocket() {
 
     socket.on('initialize', (data) => {
         console.log('Game initialized with data:', data);
-        myPlayerId = data.id; // Ensure we have the correct player ID
+        myPlayerId = data.id;
+        console.log('My player ID:', myPlayerId);
+        
         // Create cars for existing players
         for (const id in data.players) {
             if (id !== myPlayerId) {
-                console.log('Creating car for existing player:', id);
-                createRemoteCar({
+                console.log('Another player is already in the game:', id);
+                console.log('Player data:', data.players[id]);
+                createOtherPlayerCar({
                     id: id,
                     position: data.players[id].position,
                     rotation: data.players[id].rotation
                 });
             }
         }
+        updatePlayerCount();
     });
 
     socket.on('playerJoined', (playerData) => {
         if (playerData.id !== myPlayerId) {
-            console.log('New player joined:', playerData.id);
-            createRemoteCar(playerData);
+            console.log('Another player joined the game:', playerData.id);
+            console.log('Player data:', playerData);
+            createOtherPlayerCar(playerData);
+            updatePlayerCount();
         }
     });
 
     socket.on('playerMoved', (data) => {
-        const remoteCar = remotePlayers[data.id];
-        if (remoteCar) {
-            remoteCar.position.set(data.position.x, data.position.y, data.position.z);
-            remoteCar.quaternion.set(data.rotation.x, data.rotation.y, data.rotation.z, data.rotation.w);
-        } else {
-            console.warn('Received position update for unknown player:', data.id);
+        const otherPlayer = otherPlayers[data.id];
+        if (otherPlayer && otherPlayer.body) {
+            // Update physics body position and rotation
+            otherPlayer.body.setTranslation(data.position, true);
+            otherPlayer.body.setRotation(data.rotation, true);
+            
+            // Update mesh position and rotation
+            otherPlayer.mesh.position.set(
+                data.position.x,
+                data.position.y,
+                data.position.z
+            );
+            otherPlayer.mesh.quaternion.set(
+                data.rotation.x,
+                data.rotation.y,
+                data.rotation.z,
+                data.rotation.w
+            );
         }
     });
 
     socket.on('playerLeft', (id) => {
-        if (remotePlayers[id]) {
-            scene.remove(remotePlayers[id]);
-            delete remotePlayers[id];
-            console.log('Player left:', id);
+        if (otherPlayers[id]) {
+            scene.remove(otherPlayers[id].mesh);
+            physicsWorld.world.removeRigidBody(otherPlayers[id].body);
+            delete otherPlayers[id];
+            console.log('Player left the game:', id);
+            updatePlayerCount();
         }
     });
 }
 
-// Create a remote player's car
-function createRemoteCar(playerData) {
-    console.log('Creating remote car for player:', playerData.id);
-    const geometry = new THREE.BoxGeometry(4, 2, 8);
-    const material = new THREE.MeshStandardMaterial({ color: 0x8888ff });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
+// Create another player's car
+function createOtherPlayerCar(playerData) {
+    console.log('Creating car for other player:', playerData.id);
+    console.log('Player data:', playerData);
+    
+    // Load the same car model as local player
+    loader.load(
+        'car2.glb',
+        (gltf) => {
+            const mesh = gltf.scene;
+            mesh.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                    // Make other player's car bright red for visibility
+                    child.material = new THREE.MeshStandardMaterial({ 
+                        color: 0xff0000,
+                        emissive: 0xff0000,
+                        emissiveIntensity: 0.5
+                    });
+                }
+            });
 
-    mesh.position.set(
-        playerData.position.x,
-        playerData.position.y,
-        playerData.position.z
+            // Add debug helper
+            const helper = new THREE.BoxHelper(mesh, 0xffff00);
+            mesh.add(helper);
+
+            // Set position from player data or use a visible default position
+            if (playerData.position) {
+                console.log('Setting other player position:', playerData.position);
+                // If position is too far away, use a closer position
+                if (Math.abs(playerData.position.x) > 100 || Math.abs(playerData.position.z) > 100) {
+                    console.log('Position too far away, using closer position');
+                    mesh.position.set(10, 2, 0); // Place 10 units to the right of origin
+                } else {
+                    mesh.position.set(
+                        playerData.position.x,
+                        playerData.position.y,
+                        playerData.position.z
+                    );
+                }
+            } else {
+                console.warn('No position data for other player, using default position');
+                mesh.position.set(10, 2, 0); // Place 10 units to the right of origin
+            }
+
+            // Set rotation if provided
+            if (playerData.rotation) {
+                console.log('Setting other player rotation:', playerData.rotation);
+                mesh.quaternion.set(
+                    playerData.rotation.x,
+                    playerData.rotation.y,
+                    playerData.rotation.z,
+                    playerData.rotation.w
+                );
+            }
+
+            // Create physics body for other player's car
+            const boundingBox = new THREE.Box3().setFromObject(mesh);
+            const size = new THREE.Vector3();
+            boundingBox.getSize(size);
+            
+            console.log("Creating physics body for other player's car with size:", size);
+            
+            // Create physics body with same settings as local car
+            const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
+                .setTranslation(mesh.position.x, mesh.position.y, mesh.position.z)
+                .setLinearDamping(0.3)
+                .setAngularDamping(0.8)
+                .setCanSleep(false)
+                .setCcdEnabled(true)
+                .setGravityScale(1.2);
+            
+            const body = physicsWorld.world.createRigidBody(bodyDesc);
+            if (!body) {
+                console.error("Failed to create physics body for other player's car");
+                return;
+            }
+            
+            const bodyHandle = body.handle;
+            console.log('Physics body created for other player with handle:', bodyHandle);
+            
+            // Create collider with same settings as local car
+            const colliderDesc = RAPIER.ColliderDesc.cuboid(size.x / 2, size.y / 2, size.z / 2)
+                .setRestitution(0.1)
+                .setFriction(0.95)
+                .setDensity(50.0);
+            
+            physicsWorld.world.createCollider(colliderDesc, body);
+
+            // Store both mesh and physics body
+            otherPlayers[playerData.id] = {
+                mesh: mesh,
+                body: body,
+                bodyHandle: bodyHandle
+            };
+
+            // Add to scene
+            scene.add(mesh);
+            console.log('Other player added to game at position:', mesh.position);
+            updatePlayerCount();
+        },
+        (xhr) => {
+            console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+        },
+        (error) => {
+            console.error('Error loading other player car:', error);
+        }
     );
-
-    scene.add(mesh);
-    remotePlayers[playerData.id] = mesh;
-    console.log('Remote car created and added to scene');
 }
 
 // Set up keyboard controls
@@ -360,64 +501,19 @@ function updateCamera() {
     const body = physicsWorld.world.bodies.get(carBodyHandle);
     if (!body) return;
     
-    // Get car's position and rotation
-    const position = body.translation();
-    const rotation = body.rotation();
+    const pos = body.translation();
     
-    // Calculate camera offset (increased distance)
-    const offset = new RAPIER.Vector3(0, 15, 30);
-    const rotatedOffset = new RAPIER.Vector3(
-        offset.x * (1 - 2 * rotation.y * rotation.y - 2 * rotation.z * rotation.z) +
-        offset.y * (2 * rotation.x * rotation.y - 2 * rotation.w * rotation.z) +
-        offset.z * (2 * rotation.x * rotation.z + 2 * rotation.w * rotation.y),
-        
-        offset.x * (2 * rotation.x * rotation.y + 2 * rotation.w * rotation.z) +
-        offset.y * (1 - 2 * rotation.x * rotation.x - 2 * rotation.z * rotation.z) +
-        offset.z * (2 * rotation.y * rotation.z - 2 * rotation.w * rotation.x),
-        
-        offset.x * (2 * rotation.x * rotation.z - 2 * rotation.w * rotation.y) +
-        offset.y * (2 * rotation.y * rotation.z + 2 * rotation.w * rotation.x) +
-        offset.z * (1 - 2 * rotation.x * rotation.x - 2 * rotation.y * rotation.y)
+    // Calculate camera position
+    const cameraOffset = new THREE.Vector3(0, 20, 30);
+    const cameraPosition = new THREE.Vector3(
+        pos.x + cameraOffset.x,
+        pos.y + cameraOffset.y,
+        pos.z + cameraOffset.z
     );
     
-    // Calculate desired camera position
-    const desiredPosition = new THREE.Vector3(
-        position.x - rotatedOffset.x,
-        position.y + rotatedOffset.y,
-        position.z - rotatedOffset.z
-    );
-    
-    // Create a ray from the car to the camera position
-    const rayOrigin = new THREE.Vector3(position.x, position.y + 1, position.z);
-    const rayDirection = new THREE.Vector3(
-        desiredPosition.x - position.x,
-        desiredPosition.y - position.y,
-        desiredPosition.z - position.z
-    ).normalize();
-    
-    // Cast ray to check for ground collision
-    const ray = new RAPIER.Ray(rayOrigin, rayDirection);
-    const maxToi = 100.0;
-    const solid = true;
-    const hit = physicsWorld.world.castRay(ray, maxToi, solid);
-    
-    if (hit) {
-        // If we hit something, adjust camera position to stay above the hit point
-        const hitPoint = ray.pointAt(hit.toi);
-        const minHeightAboveGround = 5.0; // Minimum height above ground
-        const hitHeight = hitPoint.y;
-        
-        // If camera would be too close to ground, raise it
-        if (desiredPosition.y < hitHeight + minHeightAboveGround) {
-            desiredPosition.y = hitHeight + minHeightAboveGround;
-        }
-    }
-    
-    // Set camera position
-    camera.position.copy(desiredPosition);
-    
-    // Look at car
-    camera.lookAt(position.x, position.y + 1, position.z);
+    // Smoothly move camera
+    camera.position.lerp(cameraPosition, 0.1);
+    camera.lookAt(pos.x, pos.y + 2, pos.z);
 }
 
 // Load landscape
@@ -559,7 +655,14 @@ function loadCar() {
                     .setGravityScale(1.2);
                 
                 const body = physicsWorld.world.createRigidBody(bodyDesc);
+                if (!body) {
+                    console.error("Failed to create physics body for car");
+                    reject(new Error("Failed to create physics body"));
+                    return;
+                }
+                
                 carBodyHandle = body.handle;
+                console.log('Car physics body created with handle:', carBodyHandle);
                 
                 // Create collider with improved stability settings
                 const colliderDesc = RAPIER.ColliderDesc.cuboid(size.x / 2, size.y / 2, size.z / 2)
@@ -888,21 +991,22 @@ function updateMeshPositionsFromPhysics() {
             const pos = body.translation();
             const rot = body.rotation();
             
-            // Update car mesh position and rotation
             car.position.set(pos.x, pos.y, pos.z);
             car.quaternion.set(rot.x, rot.y, rot.z, rot.w);
         }
     }
 
-    // Update remote players' positions
-    for (const id in remotePlayers) {
-        const remoteCar = remotePlayers[id];
-        if (remoteCar) {
-            // Note: Remote player positions are updated via socket events
-            // This is just a safety check to ensure the mesh exists
-            if (!scene.getObjectById(remoteCar.id)) {
-                scene.add(remoteCar);
-            }
+    // Update other players' positions
+    for (const id in otherPlayers) {
+        const otherPlayer = otherPlayers[id];
+        if (otherPlayer && otherPlayer.body) {
+            const pos = otherPlayer.body.translation();
+            const rot = otherPlayer.body.rotation();
+            
+            otherPlayer.mesh.position.set(pos.x, pos.y, pos.z);
+            otherPlayer.mesh.quaternion.set(rot.x, rot.y, rot.z, rot.w);
+        } else {
+            console.warn('Other player not found or missing body:', id);
         }
     }
 
@@ -916,7 +1020,6 @@ function updateMeshPositionsFromPhysics() {
             bullet.mesh.position.set(pos.x, pos.y, pos.z);
             bullet.mesh.quaternion.set(rot.x, rot.y, rot.z, rot.w);
             
-            // Check if bullet is too old or out of bounds
             const now = Date.now();
             if (now - bullet.spawnTime > BULLET_LIFETIME || 
                 Math.abs(pos.x) > 1000 || 
@@ -958,10 +1061,12 @@ function animate() {
             if (body) {
                 const pos = body.translation();
                 const rot = body.rotation();
-                socket.emit('updatePosition', {
+                const positionData = {
+                    id: myPlayerId,
                     position: { x: pos.x, y: pos.y, z: pos.z },
                     rotation: { x: rot.x, y: rot.y, z: rot.z, w: rot.w }
-                });
+                };
+                socket.emit('updatePosition', positionData);
             }
         }
 

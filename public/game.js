@@ -58,7 +58,8 @@ const carControls = {
     s: false,
     a: false,
     d: false,
-    f: false
+    f: false,
+    space: false
 };
 
 // Control mode
@@ -104,8 +105,9 @@ function setupControls() {
                 carControls.f = true;
                 flipCar();
                 break;
-            case 'r': // Reload landscape
-                reloadLandscape().catch(console.error);
+            case ' ': // Spacebar for shooting
+                carControls.space = true;
+                fireBullet();
                 break;
         }
     });
@@ -126,6 +128,9 @@ function setupControls() {
                 break;
             case 'f':
                 carControls.f = false;
+                break;
+            case ' ':
+                carControls.space = false;
                 break;
         }
     });
@@ -459,19 +464,19 @@ function loadCar() {
                 // Create physics body with improved stability settings
                 const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
                     .setTranslation(center.x, center.y, center.z)
-                    .setLinearDamping(0.2)  // Increased from 0.1
-                    .setAngularDamping(0.7) // Increased from 0.5
+                    .setLinearDamping(0.3)  // Increased from 0.2
+                    .setAngularDamping(0.8) // Increased from 0.7
                     .setCanSleep(false)
                     .setCcdEnabled(true)
-                    .setGravityScale(1.0); // Increased from 0.5
+                    .setGravityScale(1.2); // Increased from 1.0
                 
                 const body = physicsWorld.world.createRigidBody(bodyDesc);
                 
                 // Create collider with improved stability settings
                 const colliderDesc = RAPIER.ColliderDesc.cuboid(size.x / 2, size.y / 2, size.z / 2)
                     .setRestitution(0.1)
-                    .setFriction(0.9)  // Increased from 0.8
-                    .setDensity(50.0); // Increased from 10.0
+                    .setFriction(0.95)  // Increased from 0.9
+                    .setDensity(50.0); // Increased from 50.0
                 
                 physicsWorld.world.createCollider(colliderDesc, body);
                 
@@ -534,6 +539,10 @@ function createPhysicsSphere(color = 0xff0000, position = { x: 0, y: 20, z: 0 })
 
 // Start the game
 let spheres = [];
+let bullets = []; // Add this near the top with other global variables
+const MAX_BULLETS = 100; // Maximum number of bullets in the scene
+const BULLET_SPEED = 100.0; // Speed of bullets
+const BULLET_LIFETIME = 3000; // Bullet lifetime in milliseconds
 
 // Safe wrapper to remove rigid bodies
 function safeRemoveRigidBody(handle) {
@@ -561,6 +570,109 @@ function updateCar() {
     }
 }
 
+// Function to create and fire a bullet
+function fireBullet() {
+    if (!car || !carBodyHandle) return;
+    
+    const body = physicsWorld.world.bodies.get(carBodyHandle);
+    if (!body) return;
+
+    // Get car's position and rotation
+    const pos = body.translation();
+    const rot = body.rotation();
+    
+    // Create bullet geometry and material
+    const bulletGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+    const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const bulletMesh = new THREE.Mesh(bulletGeometry, bulletMaterial);
+    
+    // Position bullet at the front of the car
+    const forward = new THREE.Vector3(0, 0, 1);
+    const quaternion = new THREE.Quaternion(rot.x, rot.y, rot.z, rot.w);
+    const rotatedForward = forward.clone().applyQuaternion(quaternion).normalize();
+    
+    // Calculate bullet spawn position (slightly in front of the car)
+    const spawnPos = {
+        x: pos.x + rotatedForward.x * 2,
+        y: pos.y + 0.5,
+        z: pos.z + rotatedForward.z * 2
+    };
+    
+    bulletMesh.position.set(spawnPos.x, spawnPos.y, spawnPos.z);
+    scene.add(bulletMesh);
+    
+    // Create physics body for bullet
+    const bulletBodyDesc = RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(spawnPos.x, spawnPos.y, spawnPos.z)
+        .setLinearDamping(0.0)
+        .setAngularDamping(0.0);
+    
+    const bulletBody = physicsWorld.world.createRigidBody(bulletBodyDesc);
+    
+    const bulletColliderDesc = RAPIER.ColliderDesc.ball(0.2)
+        .setRestitution(0.2)
+        .setFriction(0.0)
+        .setDensity(0.1);
+    
+    physicsWorld.world.createCollider(bulletColliderDesc, bulletBody);
+    
+    // Apply initial velocity in the direction the car is facing
+    const velocity = {
+        x: rotatedForward.x * BULLET_SPEED,
+        y: rotatedForward.y * BULLET_SPEED,
+        z: rotatedForward.z * BULLET_SPEED
+    };
+    bulletBody.setLinvel(velocity, true);
+    
+    // Store bullet data
+    const bullet = {
+        mesh: bulletMesh,
+        body: bulletBody,
+        spawnTime: Date.now()
+    };
+    
+    bullets.push(bullet);
+    
+    // Remove oldest bullet if we've reached the maximum
+    if (bullets.length > MAX_BULLETS) {
+        removeBullet(bullets[0]);
+    }
+}
+
+// Function to remove a bullet
+function removeBullet(bullet) {
+    if (!bullet) return;
+    
+    // Remove from physics world
+    physicsWorld.world.removeRigidBody(bullet.body);
+    
+    // Remove from scene
+    scene.remove(bullet.mesh);
+    
+    // Remove from bullets array
+    const index = bullets.indexOf(bullet);
+    if (index !== -1) {
+        bullets.splice(index, 1);
+    }
+}
+
+// Update bullets in animation loop
+function updateBullets() {
+    const currentTime = Date.now();
+    
+    // Update each bullet
+    bullets.forEach((bullet, index) => {
+        // Update bullet position
+        const pos = bullet.body.translation();
+        bullet.mesh.position.set(pos.x, pos.y, pos.z);
+        
+        // Remove bullet if it's too old
+        if (currentTime - bullet.spawnTime > BULLET_LIFETIME) {
+            removeBullet(bullet);
+        }
+    });
+}
+
 // Animation loop
 function animate() {
     requestAnimationFrame(animate);
@@ -574,6 +686,9 @@ function animate() {
         
         // Update car position
         updateCar();
+        
+        // Update bullets
+        updateBullets();
         
         // Update camera based on current mode
         if (isOrbitMode) {

@@ -165,53 +165,12 @@ function initSocket() {
     });
 
     socket.on('playerMoved', (data) => {
-        console.log('🔄 UPDATE DEBUG: Received playerMoved event for player:', data.id);
-        
-        const otherPlayer = otherPlayers[data.id];
-        
-        if (!otherPlayer) {
-            console.warn('🔄 UPDATE DEBUG: Could not find remote player for update:', data.id);
-            console.log('🔄 UPDATE DEBUG: Available remote players:', Object.keys(otherPlayers));
-            return;
-        }
-        
-        if (!data.position) {
-            console.warn('🔄 UPDATE DEBUG: No position data received for player:', data.id);
-            return;
-        }
-        
-        // Get previous position for logging
-        const oldPos = otherPlayer.mesh ? otherPlayer.mesh.position.clone() : null;
-        
-        // Update the mesh position and rotation
-        if (otherPlayer.mesh) {
-            otherPlayer.mesh.position.set(
-                data.position.x,
-                data.position.y,
-                data.position.z
-            );
-            
-            if (data.rotation) {
-                otherPlayer.mesh.quaternion.set(
-                    data.rotation.x,
-                    data.rotation.y,
-                    data.rotation.z,
-                    data.rotation.w
-                );
-            }
-            
-            console.log('🔄 UPDATE DEBUG: Updated remote car position from', 
-                oldPos ? `(${oldPos.x.toFixed(2)}, ${oldPos.y.toFixed(2)}, ${oldPos.z.toFixed(2)})` : 'unknown',
-                'to', 
-                `(${data.position.x.toFixed(2)}, ${data.position.y.toFixed(2)}, ${data.position.z.toFixed(2)})`
-            );
-        }
-        
-        // Update the physics body if it exists
-        if (otherPlayer.body) {
-            otherPlayer.body.setTranslation(data.position, true);
-            if (data.rotation) {
-                otherPlayer.body.setRotation(data.rotation, true);
+        const id = data.id;
+        if (otherPlayers[id]) {
+            const mesh = otherPlayers[id].mesh;
+            if (mesh) {
+                mesh.position.set(data.position.x, data.position.y, data.position.z);
+                mesh.rotation.set(data.rotation.x, data.rotation.y, data.rotation.z);
             }
         }
     });
@@ -348,7 +307,7 @@ function updateMeshPositionsFromPhysics() {
     }
 }
 
-// Create another player's car - simplified version with enhanced debugging
+// Create another player's car with enhanced debugging
 function createOtherPlayerCar(playerData) {
     console.log('🚨 CORE DEBUG: Creating remote car for player:', playerData.id);
     console.log('🚨 CORE DEBUG: Scene children count BEFORE:', scene.children.length);
@@ -356,14 +315,22 @@ function createOtherPlayerCar(playerData) {
     // Create a simple box for immediate visibility
     const color = playerData.index % 2 === 0 ? 0xff0000 : 0x0000ff; // red or blue
     const geo = new THREE.BoxGeometry(4, 2, 8);
-    const mat = new THREE.MeshStandardMaterial({ color });
+    const mat = new THREE.MeshStandardMaterial({ 
+        color: color,
+        emissive: color,
+        emissiveIntensity: 0.5
+    });
     const tempMesh = new THREE.Mesh(geo, mat);
     tempMesh.castShadow = true;
     tempMesh.receiveShadow = true;
     
-    // Set initial position
+    // Add a yellow box helper for better visibility
+    const boxHelper = new THREE.BoxHelper(tempMesh, 0xffff00);
+    tempMesh.add(boxHelper);
+    
+    // Set initial position from player data
     const position = {
-        x: playerData.position?.x ?? 0,
+        x: playerData.position?.x ?? 20,
         y: playerData.position?.y ?? 2,
         z: playerData.position?.z ?? 0
     };
@@ -384,56 +351,42 @@ function createOtherPlayerCar(playerData) {
     console.log('🚨 CORE DEBUG: Stored remote player with ID:', playerData.id);
     console.log('🚨 CORE DEBUG: otherPlayers keys:', Object.keys(otherPlayers));
     
-    // SKIP GLTF LOADING FOR TESTING - Just use the box mesh temporarily
-    console.log('🚨 CORE DEBUG: SKIPPING GLTF loading for debugging - using box mesh');
-    otherPlayers[playerData.id] = {
-        mesh: tempMesh,
-        isTemporary: false
-    };
-    
-    // ADD FORCED ANIMATION to remote car to confirm visibility
-    console.log('🚨 CORE DEBUG: Adding forced animation to remote car');
-    setInterval(() => {
-        const other = otherPlayers[playerData.id];
-        if (other && other.mesh) {
-            const pos = other.mesh.position;
-            pos.y += Math.sin(Date.now() / 500) * 0.1; // Bounce up and down
-            pos.x += 0.05; // Slowly move right
-            console.log(`🚨 FORCED ANIMATION: Moving remote car ${playerData.id} to:`, 
-                pos.x.toFixed(2), pos.y.toFixed(2), pos.z.toFixed(2));
-        } else {
-            console.warn('🚨 FORCED ANIMATION: Cannot find remote car:', playerData.id);
-        }
-    }, 1000);
-    
-    // Add debug interval to monitor positions
-    if (!window.positionDebugInterval) {
-        window.positionDebugInterval = setInterval(() => {
-            console.log('📊 POSITION DEBUG: ---- Remote Player Positions ----');
-            for (const id in otherPlayers) {
-                const remotePlayer = otherPlayers[id];
-                if (remotePlayer && remotePlayer.mesh) {
-                    console.log(`📍 Remote player ${id} at position:`, 
-                        remotePlayer.mesh.position.x.toFixed(2), 
-                        remotePlayer.mesh.position.y.toFixed(2), 
-                        remotePlayer.mesh.position.z.toFixed(2)
-                    );
-                }
-            }
-            console.log('📊 POSITION DEBUG: ---- Scene Information ----');
-            console.log('📊 POSITION DEBUG: Total scene children:', scene.children.length);
-            console.log('📊 POSITION DEBUG: Total other players:', Object.keys(otherPlayers).length);
+    // Load the proper car model
+    loader.load(
+        'car2.glb',
+        (gltf) => {
+            const carModel = gltf.scene;
             
-            // Check if car is visible and at the right position
-            if (car) {
-                console.log('📊 POSITION DEBUG: Local car position:', 
-                    car.position.x.toFixed(2), 
-                    car.position.y.toFixed(2), 
-                    car.position.z.toFixed(2)
-                );
-            }
-        }, 2000);
-    }
+            // Enable shadows
+            carModel.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+            
+            // Position the car model
+            carModel.position.copy(position);
+            
+            // Add to scene
+            scene.add(carModel);
+            
+            // Remove temporary mesh
+            scene.remove(tempMesh);
+            
+            // Update stored reference
+            otherPlayers[playerData.id] = {
+                mesh: carModel,
+                isTemporary: false
+            };
+            
+            console.log('🚨 CORE DEBUG: Replaced temporary mesh with proper car model');
+        },
+        undefined,
+        (error) => {
+            console.error('Error loading car model for remote player:', error);
+        }
+    );
     
     updatePlayerCount();
 }
@@ -752,7 +705,7 @@ function reloadLandscape() {
     });
 }
 
-// Load car model
+// Restore car model loading
 function loadCar() {
     return new Promise((resolve, reject) => {
         loader.load(
@@ -767,11 +720,11 @@ function loadCar() {
                         child.receiveShadow = true;
                     }
                 });
-                
+
                 // Position car
                 car.position.set(0, 2, 0);
                 scene.add(car);
-                
+
                 // Create physics body for car
                 const boundingBox = new THREE.Box3().setFromObject(car);
                 const size = new THREE.Vector3();
@@ -789,25 +742,19 @@ function loadCar() {
                     .setCanSleep(false)
                     .setCcdEnabled(true)
                     .setGravityScale(1.2);
-                
+
                 const body = physicsWorld.world.createRigidBody(bodyDesc);
-                if (!body) {
-                    console.error("Failed to create physics body for car");
-                    reject(new Error("Failed to create physics body"));
-                    return;
-                }
-                
                 carBodyHandle = body.handle;
                 console.log('Car physics body created with handle:', carBodyHandle);
-                
+
                 // Create collider with improved stability settings
                 const colliderDesc = RAPIER.ColliderDesc.cuboid(size.x / 2, size.y / 2, size.z / 2)
                     .setRestitution(0.1)
                     .setFriction(0.95)
                     .setDensity(50.0);
-                
+
                 physicsWorld.world.createCollider(colliderDesc, body);
-                
+
                 console.log('Car loaded with physics, handle:', carBodyHandle);
                 resolve();
             },
